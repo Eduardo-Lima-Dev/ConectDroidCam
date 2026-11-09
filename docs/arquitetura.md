@@ -27,7 +27,7 @@ CELULAR (Flutter + nativo)                COMPUTADOR (Flutter + núcleo Rust)
 | Saída no Linux | `v4l2loopback` e nó de áudio PipeWire | Aparece como webcam e microfone em qualquer programa |
 | Saída no macOS | Plugin do OBS | A câmera virtual do sistema exige conta paga de desenvolvedor Apple |
 
-Detalhes do protocolo em [protocol-v1.md](protocol-v1.md). Resultados das validações em [decisoes/fase1-spikes.md](decisoes/fase1-spikes.md).
+O que já está pronto e o que falta está no [roadmap](roadmap.md). Detalhes do protocolo em [protocol-v1.md](protocol-v1.md). Resultados das validações em [decisoes/fase1-spikes.md](decisoes/fase1-spikes.md).
 
 ## Código no repositório
 

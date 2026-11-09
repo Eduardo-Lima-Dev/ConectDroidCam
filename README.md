@@ -33,6 +33,7 @@ Use a câmera do celular (Android ou iPhone) como webcam no computador (Linux ou
 
 ## Documentação
 
+- **Comece por aqui:** [Roadmap](docs/roadmap.md) (fases, o que já foi feito e o que falta) e [Guia de desenvolvimento](docs/desenvolvimento.md) (ambiente, como rodar tudo, convenções e armadilhas conhecidas)
 - [Arquitetura](docs/arquitetura.md)
 - [Protocolo v1](docs/protocol-v1.md)
 - [Conectar o celular pelo ADB (Linux e macOS)](docs/guia-adb.md)
@@ -42,4 +43,4 @@ Use a câmera do celular (Android ou iPhone) como webcam no computador (Linux ou
 
 ## Desenvolvimento
 
-Flutter e Rust. Os detalhes de ambiente e build serão adicionados conforme as fases avançam.
+Flutter (app) e Rust (protocolo e ferramentas de teste). Para montar o ambiente em qualquer máquina e saber por onde continuar, veja o [Guia de desenvolvimento](docs/desenvolvimento.md) e o [Roadmap](docs/roadmap.md).
