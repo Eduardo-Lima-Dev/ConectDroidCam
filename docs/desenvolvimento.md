@@ -109,6 +109,20 @@ scripts/spikes/s1-android.sh 192.168.0.7:47821 /dev/video0 16
 
 O `/dev/videoN` precisa ser um dispositivo do `v4l2loopback` que ninguém mais esteja usando. `CDC_FFMPEG_LOGLEVEL=info` mostra o que o `ffmpeg` do receptor decodifica.
 
+## Scripts de validação (`scripts/`)
+
+| Script | O que faz | Precisa de |
+|---|---|---|
+| `setup/linux-webcam-virtual.sh` | Cria o dispositivo `/dev/video10` "ConectDroidCam" (`--simular` mostra o que faria; `--remover` desfaz) | root |
+| `spikes/verificar-webcam.sh` | Confere se um dispositivo V4L2 serve de webcam para navegadores e OBS | `v4l2-ctl`, `ffmpeg` |
+| `spikes/s1-android.sh` | Celular → TCP → receptor → V4L2, lendo o dispositivo de volta | celular transmitindo |
+| `spikes/s2-v4l2.sh` | H.264 por TCP até um dispositivo V4L2, com fonte simulada | `ffmpeg`, um dispositivo `v4l2loopback` |
+| `spikes/s3-pipewire.sh` | Microfone virtual no PipeWire, com um tom de teste | PipeWire |
+| `spikes/s4-adb-forward.sh` | O mesmo fluxo por um túnel `adb forward` (`-d` para USB) | celular transmitindo |
+| `spikes/s9-perda.sh` | TCP sob atraso e perda de pacotes, em um namespace sem root | `tc` (iproute2) |
+
+Os resultados e o que cada um **não** prova estão em [decisoes/fase1-spikes.md](decisoes/fase1-spikes.md). Para o Mac, veja [configurar-mac.md](configurar-mac.md).
+
 ## Convenções
 
 - **Idioma:** português, com acentuação correta, em código comentado, mensagens do app, documentação e mensagens de commit.

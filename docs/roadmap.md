@@ -63,9 +63,9 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ não começou.
 
 - [x] Repositório, `.gitignore`, projeto Flutter para as quatro plataformas, CI.
 - [x] Repositório privado no GitHub.
-- [ ] Linux: dispositivo `v4l2loopback` dedicado (`video_nr=10`, `card_label="ConectDroidCam"`, `exclusive_caps=1`). **Exige `sudo`.** Hoje os testes usam o `/dev/video0` genérico, sem `exclusive_caps`, o que pode impedir navegadores de listá-lo.
-- [ ] OBS em Flatpak: acesso a dispositivos (`flatpak override --user --device=all com.obsproject.Studio`), ainda não aplicado nem testado.
-- [ ] Mac: Flutter na mesma versão, Xcode, CocoaPods, Rust e instalação do app em um iPhone com Apple ID gratuito.
+- [x] Linux: dispositivo `v4l2loopback` dedicado (`/dev/video10`, "ConectDroidCam", `exclusive_caps=1`), criado com `sudo scripts/setup/linux-webcam-virtual.sh` e validado: anuncia só captura e entrega 30 FPS a um leitor. Falta conferir o comportamento depois de reiniciar.
+- [x] OBS em Flatpak: **nada a fazer**; ele já vem com acesso a dispositivos (`devices=all`).
+- [ ] Mac: Flutter na mesma versão, Xcode, CocoaPods, Rust e instalação do app em um iPhone com Apple ID gratuito. **Guia escrito (sem teste)** em [configurar-mac.md](configurar-mac.md); falta o Mac.
 
 ### Fase 1 — Spikes e gate G0
 
@@ -74,14 +74,14 @@ Detalhes e medições em [decisoes/fase1-spikes.md](decisoes/fase1-spikes.md).
 | # | Validação | Estado |
 |---|---|---|
 | S1 | Celular → TCP → computador → V4L2 | ✅ com ressalvas (falta medir latência e conferir a orientação) |
-| S2 | Decodificação → dispositivo V4L2 | 🟡 funciona; falta abrir no OBS, Chromium e Firefox (precisa do dispositivo dedicado) |
-| S3 | Microfone virtual no PipeWire | ⬜ |
-| S4 | USB: `adb forward` no Android e `iproxy` no iPhone | ⬜ |
+| S2 | Decodificação → dispositivo V4L2 | ✅ no OBS (a imagem do celular aparece); 🟡 Firefox e Chromium não testados |
+| S3 | Microfone virtual no PipeWire | 🟡 mecanismo validado (tom atravessa o nó); falta áudio do celular, sincronia e mixer do OBS |
+| S4 | USB: `adb forward` no Android e `iproxy` no iPhone | 🟡 `adb forward` funciona (pelo transporte Wi-Fi do `adb`); falta o cabo USB e o iPhone |
 | S5 | iPhone com VideoToolbox e TLS | ⬜ (precisa do Mac) |
 | S6 | Plugin do OBS no Mac sem conta paga | ⬜ (precisa do Mac) |
 | S7 | Extensão de câmera do macOS com conta gratuita | ⬜ (precisa do Mac) |
 | S8 | Textura do Flutter com frames reais (`irondash_texture`) | ⬜ |
-| S9 | TCP sob perda de pacotes (`tc netem`) | ⬜ (precisa de root) |
+| S9 | TCP sob perda de pacotes (`tc netem`) | 🟡 medido sem root: TCP puro aguenta até ~1% de perda, com picos acima disso; falta medir o descarte do celular |
 | S10 | 1440p em aparelhos reais | 🟡 um aparelho, sessão curta |
 
 **Gate G0** (a arquitetura segue?): exige S1 a S5 e S9. Ainda não foi fechado. S6 define como o macOS será integrado.
@@ -162,7 +162,7 @@ Hoje o app do computador é só uma tela provisória; quem recebe o vídeo é o 
 
 ## Ordem recomendada
 
-1. **Validar o dispositivo `/dev/video10` no OBS, no Chromium e no Firefox.** É curto e prova que o caminho inteiro serve ao objetivo.
+1. ~~Validar o dispositivo `/dev/video10` no OBS~~ **Feito**: a imagem do celular aparece no OBS. Falta só o Firefox e o Chromium.
 2. **Fase 4 (app do Linux)**, para o computador e o celular abrirem juntos, já com mDNS.
 3. **Pareamento e TLS**, antes de qualquer uso fora de uma rede de confiança.
 4. **Microfone e orientação do vídeo.**
@@ -173,7 +173,7 @@ Hoje o app do computador é só uma tela provisória; quem recebe o vídeo é o 
 
 | Preciso de | Libera |
 |---|---|
-| `sudo` na máquina Linux | Dispositivo `v4l2loopback` dedicado e `tc netem` (S2 completo, S9) |
+| Conferência no Firefox e no Chromium | Fecha o S2. O OBS já foi conferido; o `tc netem` do S9 não precisa de root |
 | Mac com Xcode e um iPhone | S5, S6, S7, emissor iOS, CI de macOS |
 | Celular Android conectado | Qualquer teste no aparelho (veja o [guia-adb.md](guia-adb.md)) |
 | Conta Apple Developer paga (opcional) | Webcam do sistema no macOS e TestFlight |

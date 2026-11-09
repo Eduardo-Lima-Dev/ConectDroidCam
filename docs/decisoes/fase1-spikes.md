@@ -7,14 +7,14 @@ Registro de cada validação. Só entra aqui o que foi medido; o resto fica como
 | # | Validação | Estado | Resultado |
 |---|---|---|---|
 | S1 | Android → TCP → Linux | **Validado, com ressalvas** | Celular → TCP → V4L2 lido de volta a 30 FPS. Ver abaixo o que falta |
-| S2 | Decodificação → dispositivo V4L2 | **Parcial: caminho validado** | Ver abaixo |
-| S3 | Microfone virtual PipeWire | Pendente | |
-| S4 | USB Android e iPhone | Pendente | Falta celular |
+| S2 | Decodificação → dispositivo V4L2 | **Validado no OBS; navegadores pendentes** | `/dev/video10` "ConectDroidCam" anuncia só captura, entrega 30 FPS a um leitor e a **imagem do celular aparece no OBS** (Flatpak 33). Falta Firefox e Chromium |
+| S3 | Microfone virtual PipeWire | **Parcial: mecanismo validado** | Um tom atravessa o nó. Falta o áudio do celular, a sincronia e o mixer do OBS |
+| S4 | USB Android e iPhone | **Parcial** | `adb forward` funciona (pelo transporte Wi-Fi do `adb`). Falta o cabo USB e o iPhone |
 | S5 | iPhone com VideoToolbox e TLS | Pendente | Falta Mac preparado e iPhone |
 | S6 | Plugin OBS no Mac sem conta paga | Pendente | Falta Mac |
 | S7 | Camera Extension com conta gratuita | Pendente | Falta Mac |
 | S8 | Textura Flutter com frames reais | Pendente | |
-| S9 | TCP sob perda de pacotes | Pendente | Exige `tc netem` (root) |
+| S9 | TCP sob perda de pacotes | **Parcial** | Medido sem root. TCP puro aguenta até ~1% de perda; acima disso há picos. Falta medir a política de descarte do celular e o Wi-Fi com perda real |
 | S10 | 1440p em aparelhos reais | **Parcial: 1 aparelho** | O 2201117SL anunciou 2560×1440 a 30 FPS e entregou 28 frames em 1,1 s; a sustentação ainda não foi medida |
 
 ## S2 — H.264 por TCP até o V4L2
@@ -62,6 +62,80 @@ O fluxo extraído é um H.264 válido: High profile, yuv420p (`ffprobe`).
 - Full HD aparecia como indisponível: o Android exige altura múltipla de 16 e 1080 não é. A checagem agora arredonda para cima. **Validado no aparelho:** o Full HD passou a ser oferecido e transmitiu a 29,8 FPS.
 - A prévia aparecia esticada e girada, porque o Camera2 entrega a textura na orientação natural do aparelho. Corrigido com a rotação do display e a orientação do sensor; confirmado pelo usuário no aparelho.
 
+## S9 — TCP sob atraso e perda de pacotes
+
+**Como:** `scripts/spikes/s9-perda.sh` roda sem root, dentro de um namespace de usuário e de rede (`unshare -Urn`), onde aplica `tc netem` no loopback. O emissor simulado manda 12 s de vídeo em tempo real e o `cdc-testreceiver` mede o **atraso que a rede acrescenta** a cada frame: a diferença entre quando o frame chegou e quando o relógio de captura (`pts`) previa, descontado o melhor caso observado. Não inclui captura, codificação nem exibição.
+
+| Cenário | FPS | Maior intervalo entre frames | Atraso p50 | p95 | Máx |
+|---|---|---|---|---|---|
+| HD, sem degradação | 30,0 | 67 ms | 0 ms | 0 ms | 33 ms |
+| HD, atraso de 20 ms | 29,9 | 67 ms | 0 ms | 0 ms | 33 ms |
+| HD, perda de 1% | 30,0 | 67 ms | 0 ms | 0 ms | 33 ms |
+| HD, perda de 3% | 30,0 | 268 ms | 0 ms | 33 ms | 235 ms |
+| HD, perda de 5% | 28,6 | 1547 ms | 0 ms | 914 ms | 1514 ms |
+| HD, atraso de 30 ms e perda de 2% | 29,8 | 127 ms | 0 ms | 60 ms | 108 ms |
+| Full HD, perda de 3% | 30,0 | 624 ms | 0 ms | 104 ms | 624 ms |
+
+**Leitura:** até 1% de perda o TCP não deixa marca. Com 3% há paradas de centenas de milissegundos, e com 5% o atraso chega a 1,5 s: a retransmissão por tempo esgotado do TCP (com recuo exponencial) trava o fluxo inteiro, que é a razão da política de descarte até o próximo keyframe. A decisão de **manter o TCP** por enquanto se apoia nisto e na medição real abaixo; um Wi-Fi doméstico saudável perde bem menos de 1%.
+
+**Medição real, Wi-Fi, 1080p por 30 s, direto ao celular:** 29,8 FPS, atraso p50 12 ms, **p95 41 ms**, máximo 189 ms, maior intervalo entre frames 213 ms.
+
+**O que NÃO está provado:**
+- O loopback tem latência quase nula, o que faz o TCP se recuperar mais depressa do que num Wi-Fi com RTT de dezenas de milissegundos. A perda no Wi-Fi vem em rajadas, não aleatória. Os números de perda são um modelo, não o Wi-Fi.
+- O emissor simulado **não descarta frames**. A política de descarte (fila de cerca de 200 ms, descarte até o próximo keyframe) está no código do celular e **não foi medida sob perda**.
+- Uma só rede, um só aparelho, uma sessão de 30 s. Nada sobre 2,4 GHz, rede congestionada ou distância.
+
+## S3 — Microfone virtual no PipeWire
+
+**Como:** `scripts/spikes/s3-pipewire.sh` cria um par de nós com `pw-loopback`: uma entrada (`Audio/Sink`), onde o app vai escrever o áudio, e uma saída (`Audio/Source`) chamada "ConectDroidCam Microfone", que os programas enxergam como microfone. Toca um tom de 1 kHz na entrada e grava a saída com um cliente independente (`pw-record`). Sem root; o nó é removido no fim.
+
+**Resultado:** o nó aparece no grafo como `Audio/Source` com o nome certo, e a gravação tem o tom de 1 kHz com energia cerca de 22 mil vezes maior que a das outras frequências. Nenhum nó ficou para trás.
+
+**O que NÃO está provado:**
+- Não há áudio do celular: o app ainda não captura nem envia áudio.
+- Não foi conferido o mixer do OBS nem a sincronia com o vídeo.
+- Um `pw-loopback` serve ao spike, mas o app final deve criar o nó por conta própria (`pipewire-rs`), com o ciclo de vida preso ao da sessão.
+
+## S4 — USB (Android)
+
+**Como:** `scripts/spikes/s4-adb-forward.sh` encaminha uma porta do computador para a 47821 do app com `adb forward`, e o receptor conecta em `127.0.0.1`. Como o celular é o servidor, o receptor nem sabe se o caminho é Wi-Fi ou USB.
+
+| Caminho (1080p, 30 s) | FPS | Atraso p50 | p95 | Máx |
+|---|---|---|---|---|
+| Direto pelo Wi-Fi | 29,8 | 12 ms | 41 ms | 189 ms |
+| `adb forward` | 29,9 | 14 ms | 42 ms | 228 ms |
+
+**O que NÃO está provado:** a medição usou o transporte **Wi-Fi do `adb`** (o celular não estava no cabo). Prova que o mecanismo de túnel funciona e não degrada o fluxo, mas **não** que o USB entrega o mesmo, nem mede o ganho de latência que o cabo deveria dar. Para isso: ligue o cabo e rode `scripts/spikes/s4-adb-forward.sh -d`. O iPhone (`iproxy`) depende do Mac.
+
+## Dispositivo de webcam virtual (S2)
+
+O `/dev/video0` genérico **anuncia captura e saída** ao mesmo tempo (`Device Caps = 0x05200003`), e `scripts/spikes/verificar-webcam.sh` o aponta como problema: Chromium, Firefox e Zoom costumam não listar câmeras assim. A solução é um dispositivo dedicado com `exclusive_caps=1`, que exige root. O script `scripts/setup/linux-webcam-virtual.sh` o cria sem mexer no que já existia (`/dev/video0` e o módulo `v4l2loopback_dc` do Droidcam ficaram como estavam):
+
+```sh
+sudo scripts/setup/linux-webcam-virtual.sh              # cria /dev/video10 "ConectDroidCam"
+scripts/spikes/verificar-webcam.sh /dev/video10         # confere o que os programas esperam
+sudo scripts/setup/linux-webcam-virtual.sh --remover    # desfaz
+```
+
+**Resultado (Arch Linux, kernel 7.2.15, `v4l2loopback` 0.15.4):**
+
+- O script rodou com sucesso: o módulo foi recarregado (ninguém o usava) e `/dev/video10` apareceu com o nome "ConectDroidCam".
+- Com uma fonte alimentando o dispositivo, ele anuncia **só captura** (`Device Caps = 0x05200001`), como navegadores e Zoom esperam. Sem escritor, anuncia só saída (`0x05200002`): é o comportamento normal do `exclusive_caps=1`, que só passa a anunciar captura depois que alguém escreve.
+- Um leitor independente (`ffmpeg -f v4l2`) obteve **90 frames em 3 s (30 FPS)** nas rodadas seguintes à primeira, com e sem o `v4l2-ctl` abrindo o dispositivo no meio.
+- Ao vivo, o `cdc-testreceiver` escreveu o 1080p do celular nele a cerca de 30 FPS (427 frames, bitrate de 6 a 7 Mb/s), sem erro do `ffmpeg`.
+
+**Anomalia sem causa conhecida:** na primeira execução do verificador, logo depois de criar o dispositivo, o leitor **não recebeu nenhum frame**. Nas rodadas seguintes passou, de primeira, em todas. Uma hipótese é um efeito da primeira abertura depois de recarregar o módulo, mas ela **não foi verificada**. O verificador agora tenta duas vezes e diz em qual tentativa passou.
+
+**No OBS (Flatpak 33, conferido pelo usuário, com captura de tela):** com o celular transmitindo e o `cdc-testreceiver` escrevendo em `/dev/video10`, o dispositivo "ConectDroidCam" foi adicionado como fonte de **Dispositivo de Captura de Vídeo (V4L2)** e a imagem da câmera do celular apareceu na prévia, em movimento. É a primeira prova do **caminho inteiro: celular → Wi-Fi → computador → OBS**.
+
+**O que NÃO está provado:**
+- Que o **Firefox e o Chromium** listam e mostram a imagem. O Chromium não está instalado nesta máquina e o Firefox (Flatpak) não foi testado.
+- A **orientação** da imagem no OBS: o canvas estava configurado em retrato e não se sabe como o celular estava posicionado, então o print não permite afirmar se a imagem chegou na orientação certa.
+- O áudio no mixer do OBS (o app ainda não envia áudio).
+- O comportamento depois de reiniciar o computador: a configuração fica em `/etc/modprobe.d/`, mas o boot ainda não foi testado.
+
+Outro achado: o **OBS em Flatpak já vem com acesso a dispositivos** (`devices=all`), então o `flatpak override` previsto na Fase 0 é desnecessário.
+
 ## Capacidades do 2201117SL (câmera traseira)
 
 Extraídas de `adb shell dumpsys media.camera`. São o que o aparelho **declara**; o que realmente sustenta só se sabe medindo.
@@ -83,6 +157,8 @@ São 37 tamanhos no total, de 160×96 a 4000×3000. O app só oferece os que pas
 
 ## Bloqueios
 
-1. **Celular Android:** já há um (2201117SL, por depuração sem fio, que cai com frequência). Falta repetir S1 com log do celular e testar o USB (S4).
-2. **Root** para criar o dispositivo dedicado (`/dev/video10`) e para o `tc netem` do S9.
-3. **Mac preparado** (Xcode, Flutter 3.44.4, Rust) e iPhone, para S5, S6 e S7.
+1. **Firefox e Chromium** para fechar o S2: o dispositivo `/dev/video10` já existe, está validado e funciona no OBS.
+2. **Cabo USB** no celular, para provar o S4 de verdade (`scripts/spikes/s4-adb-forward.sh -d`).
+3. **Mac preparado** (veja [../configurar-mac.md](../configurar-mac.md)) e iPhone, para S5, S6, S7 e o `iproxy` do S4.
+4. **S8** (textura do Flutter com frames reais) não depende de nada externo, mas é um trabalho próprio, ligado à ponte Flutter ↔ Rust da Fase 4.
+5. **1440p sustentado** (S10): exige escolher 2K no app e transmitir por alguns minutos.
