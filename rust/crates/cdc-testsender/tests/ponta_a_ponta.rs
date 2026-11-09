@@ -28,11 +28,7 @@ fn desktop_recebe_hello_perfil_config_e_video() {
     let porta = listener.local_addr().unwrap().port();
     let servidor = thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
-        let opcoes = Options {
-            profile: VideoProfile::Hd,
-            seconds: 2,
-            ffmpeg: "ffmpeg".into(),
-        };
+        let opcoes = Options::new(VideoProfile::Hd, 2);
         serve_connection(stream, &opcoes)
     });
 
@@ -57,6 +53,7 @@ fn desktop_recebe_hello_perfil_config_e_video() {
             width: 1280,
             height: 720,
             fps: 30,
+            rotation: 0,
             ..
         }
     ));

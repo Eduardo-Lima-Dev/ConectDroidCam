@@ -1,0 +1,19 @@
+[package]
+name = "cdc-ffi"
+description = "Ponte entre o app Flutter do computador e o núcleo Rust (flutter_rust_bridge)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cdc-core = { path = "../cdc-core" }
+flutter_rust_bridge = "=2.13.0"
+
+# Sem `lints.workspace`: o código gerado pela ponte usa `unsafe`, que o resto do projeto proíbe.
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

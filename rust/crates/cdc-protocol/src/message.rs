@@ -137,6 +137,12 @@ pub enum Message {
         height: u32,
         fps: u32,
         bitrate_kbps: u32,
+        /// Graus, no sentido horário, que o quadro decodificado precisa girar para ficar
+        /// em pé: 0, 90, 180 ou 270. O codificador de um celular entrega os quadros na
+        /// orientação do sensor, então com o aparelho em pé a imagem chega deitada.
+        /// Ausente (emissores antigos) vale 0.
+        #[serde(default)]
+        rotation: u32,
     },
     #[serde(rename = "audio.set")]
     AudioSet { enabled: bool },
@@ -260,6 +266,7 @@ mod tests {
                 height: 1080,
                 fps: 30,
                 bitrate_kbps: 5800,
+                rotation: 90,
             },
             Message::AudioSet { enabled: false },
             Message::CameraSwitch {
@@ -304,6 +311,7 @@ mod tests {
             height: 2,
             fps: 3,
             bitrate_kbps: 4,
+            rotation: 270,
         }
         .to_json()
         .unwrap();
@@ -374,6 +382,16 @@ mod tests {
             Message::from_frame(&frame).unwrap_err(),
             ProtocolError::NotControl(FrameType::Video)
         ));
+    }
+
+    #[test]
+    fn profile_actual_sem_rotation_vale_zero() {
+        // Emissores anteriores a este campo não o enviam.
+        let json = br#"{"protocolVersion":1,"type":"profile.actual","width":1280,"height":720,"fps":30,"bitrateKbps":3000}"#;
+        let Message::ProfileActual { rotation, .. } = Message::from_json(json).unwrap() else {
+            panic!("não é profile.actual");
+        };
+        assert_eq!(rotation, 0);
     }
 
     #[test]

@@ -7,12 +7,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
-cdc-protocol.workspace = true
-thiserror.workspace = true
+cdc-core = { path = "../cdc-core" }
 
 [lints]
 workspace = true
-
-[dev-dependencies]
-cdc-testsender = { path = "../cdc-testsender" }
-cdc-protocol.workspace = true

@@ -4,8 +4,8 @@ use std::net::{TcpListener, TcpStream};
 use std::process::{Command, Stdio};
 use std::thread;
 
+use cdc_core::{SessionOptions, Sink, StopHandle, run};
 use cdc_protocol::VideoProfile;
-use cdc_testreceiver::{Options, Sink, run};
 use cdc_testsender::{Options as SenderOptions, serve_connection};
 
 fn ffmpeg_disponivel() -> bool {
@@ -27,26 +27,20 @@ fn receptor_mede_o_fluxo_e_grava_h264_valido() {
     let porta = listener.local_addr().unwrap().port();
     let servidor = thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
-        let opcoes = SenderOptions {
-            profile: VideoProfile::Hd,
-            seconds: 2,
-            ffmpeg: "ffmpeg".into(),
-        };
+        let opcoes = SenderOptions::new(VideoProfile::Hd, 2);
         serve_connection(stream, &opcoes)
     });
 
     let arquivo = std::env::temp_dir().join(format!("cdc-teste-{porta}.h264"));
-    let opcoes = Options {
-        duration: None,
+    let opcoes = SessionOptions {
         sink: Sink {
             v4l2: None,
             dump: Some(arquivo.to_string_lossy().into_owned()),
         },
-        ffmpeg: "ffmpeg".into(),
-        verbose: false,
+        ..SessionOptions::default()
     };
     let stream = TcpStream::connect(("127.0.0.1", porta)).unwrap();
-    let relatorio = run(stream, &opcoes).unwrap();
+    let relatorio = run(stream, &opcoes, &StopHandle::new(), |_| {}).unwrap();
     let _ = servidor.join();
 
     assert_eq!(relatorio.actual, Some((1280, 720, 30)));

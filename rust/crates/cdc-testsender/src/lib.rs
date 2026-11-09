@@ -38,6 +38,25 @@ pub struct Options {
     pub profile: VideoProfile,
     pub seconds: u32,
     pub ffmpeg: String,
+    /// Simula um celular em pé: os quadros saem na orientação do sensor (sempre horizontal)
+    /// e o emissor anuncia quantos graus, no sentido horário, eles precisam girar para
+    /// ficar em pé (0, 90, 180 ou 270).
+    pub rotation: u32,
+    /// Simula girar o celular no meio da sessão: depois de tantos segundos, passa a ter
+    /// esta rotação e envia um novo `profile.actual`.
+    pub rotate_after: Option<(u32, u32)>,
+}
+
+impl Options {
+    pub fn new(profile: VideoProfile, seconds: u32) -> Self {
+        Self {
+            profile,
+            seconds,
+            ffmpeg: "ffmpeg".into(),
+            rotation: 0,
+            rotate_after: None,
+        }
+    }
 }
 
 /// O que foi enviado, para o chamador conferir.
@@ -64,14 +83,7 @@ pub fn serve_connection(stream: TcpStream, options: &Options) -> Result<Summary,
     }
     .to_frame(0)?
     .write_to(&mut out)?;
-    Message::ProfileActual {
-        width,
-        height,
-        fps: FPS,
-        bitrate_kbps: bitrate,
-    }
-    .to_frame(0)?
-    .write_to(&mut out)?;
+    send_profile(&mut out, width, height, bitrate, options.rotation)?;
     out.flush()?;
 
     // Drena o que o cliente enviar. Fechar um socket com dados não lidos faz o TCP
@@ -85,10 +97,7 @@ pub fn serve_connection(stream: TcpStream, options: &Options) -> Result<Summary,
         })
     };
 
-    let mut child = spawn_ffmpeg(options, width, height, bitrate)?;
-    let result = stream_video(&mut child, &mut out);
-    let _ = child.kill();
-    let _ = child.wait();
+    let result = stream_segments(&mut out, options, width, height, bitrate);
 
     // Fechamento gracioso: encerra a escrita e dá até 2 s para o cliente fechar. Passado
     // o prazo, fecha tudo à força, o que também desbloqueia a thread que lê.
@@ -101,51 +110,163 @@ pub fn serve_connection(stream: TcpStream, options: &Options) -> Result<Summary,
     result
 }
 
+fn send_profile<W: Write>(
+    out: &mut W,
+    width: u32,
+    height: u32,
+    bitrate: u32,
+    rotation: u32,
+) -> Result<(), SenderError> {
+    Message::ProfileActual {
+        width,
+        height,
+        fps: FPS,
+        bitrate_kbps: bitrate,
+        rotation,
+    }
+    .to_frame(0)?
+    .write_to(out)?;
+    Ok(())
+}
+
+/// Filtro que desfaz a rotação anunciada: o quadro do "sensor" é a cena em pé girada no
+/// sentido contrário ao que o receptor vai girar.
+fn sensor_filter(rotation: u32) -> Option<&'static str> {
+    match rotation {
+        90 => Some("transpose=2"),
+        180 => Some("transpose=1,transpose=1"),
+        270 => Some("transpose=1"),
+        _ => None,
+    }
+}
+
 fn spawn_ffmpeg(
     options: &Options,
     width: u32,
     height: u32,
     bitrate: u32,
+    rotation: u32,
+    seconds: u32,
 ) -> Result<Child, SenderError> {
     let rate = format!("{bitrate}k");
-    Command::new(&options.ffmpeg)
-        .args([
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-re",
-            "-f",
-            "lavfi",
-            "-i",
-        ])
-        .arg(format!("testsrc2=size={width}x{height}:rate={FPS}"))
-        .args([
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-tune",
-            "zerolatency",
-        ])
-        .args(["-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "30"])
-        .args(["-b:v", &rate, "-maxrate", &rate, "-bufsize", &rate])
-        .args(["-bsf:v", "h264_metadata=aud=insert"])
-        .args(["-t", &options.seconds.to_string(), "-f", "h264", "-"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(SenderError::Ffmpeg)
+    // A cena em pé tem as dimensões trocadas quando a rotação é de 90 ou 270 graus.
+    let (cena_w, cena_h) = if !rotation.is_multiple_of(180) {
+        (height, width)
+    } else {
+        (width, height)
+    };
+    let mut cmd = Command::new(&options.ffmpeg);
+    cmd.args([
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-re",
+        "-f",
+        "lavfi",
+        "-i",
+    ])
+    .arg(format!("testsrc2=size={cena_w}x{cena_h}:rate={FPS}"));
+    if let Some(filtro) = sensor_filter(rotation) {
+        cmd.args(["-vf", filtro]);
+    }
+    cmd.args([
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-tune",
+        "zerolatency",
+    ])
+    .args(["-profile:v", "high", "-pix_fmt", "yuv420p", "-g", "30"])
+    .args(["-b:v", &rate, "-maxrate", &rate, "-bufsize", &rate])
+    .args(["-bsf:v", "h264_metadata=aud=insert"])
+    .args(["-t", &seconds.to_string(), "-f", "h264", "-"])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::inherit())
+    .spawn()
+    .map_err(SenderError::Ffmpeg)
 }
 
-fn stream_video<W: Write>(child: &mut Child, out: &mut W) -> Result<Summary, SenderError> {
+/// Estado que atravessa os trechos de uma sessão (antes e depois de girar o celular).
+#[derive(Default)]
+struct Shared {
+    summary: Summary,
+    config_sent: bool,
+    /// Início do relógio de envio: o primeiro frame fixa o ritmo dos seguintes.
+    epoch: Option<Instant>,
+}
+
+fn stream_segments<W: Write>(
+    out: &mut W,
+    options: &Options,
+    width: u32,
+    height: u32,
+    bitrate: u32,
+) -> Result<Summary, SenderError> {
+    let mut shared = Shared::default();
+    let primeiro = options
+        .rotate_after
+        .map_or(options.seconds, |(s, _)| s.min(options.seconds));
+    let completo = stream_segment(
+        out,
+        options,
+        width,
+        height,
+        bitrate,
+        options.rotation,
+        primeiro,
+        &mut shared,
+    )?;
+    if let Some((depois, nova)) = options.rotate_after
+        && completo
+        && depois < options.seconds
+    {
+        send_profile(out, width, height, bitrate, nova)?;
+        out.flush()?;
+        stream_segment(
+            out,
+            options,
+            width,
+            height,
+            bitrate,
+            nova,
+            options.seconds - depois,
+            &mut shared,
+        )?;
+    }
+    Ok(shared.summary)
+}
+
+/// Envia um trecho. Devolve `false` se o cliente saiu no meio.
+#[allow(clippy::too_many_arguments)]
+fn stream_segment<W: Write>(
+    out: &mut W,
+    options: &Options,
+    width: u32,
+    height: u32,
+    bitrate: u32,
+    rotation: u32,
+    seconds: u32,
+    shared: &mut Shared,
+) -> Result<bool, SenderError> {
+    let mut child = spawn_ffmpeg(options, width, height, bitrate, rotation, seconds)?;
+    let resultado = stream_video(&mut child, out, shared);
+    let _ = child.kill();
+    let _ = child.wait();
+    resultado
+}
+
+fn stream_video<W: Write>(
+    child: &mut Child,
+    out: &mut W,
+    shared: &mut Shared,
+) -> Result<bool, SenderError> {
     let Some(mut stdout) = child.stdout.take() else {
         return Err(SenderError::Io(io::Error::other("ffmpeg sem stdout")));
     };
+    // Um divisor por trecho: o AUD sintético que fecha a última unidade não pode vazar para
+    // o trecho seguinte como uma unidade vazia.
     let mut splitter = AccessUnitSplitter::new();
-    let mut summary = Summary::default();
-    let mut config_sent = false;
-    // Início do relógio de envio: o primeiro frame fixa o ritmo dos seguintes.
-    let mut epoch: Option<Instant> = None;
     let mut chunk = vec![0u8; 64 * 1024];
 
     loop {
@@ -157,38 +278,41 @@ fn stream_video<W: Write>(child: &mut Child, out: &mut W) -> Result<Summary, Sen
             splitter.push(&chunk[..read])
         };
         for unit in units {
-            if !config_sent && let Some(config) = extract_config(&unit) {
+            if !shared.config_sent
+                && let Some(config) = extract_config(&unit)
+            {
                 Frame::new(FrameType::VideoConfig, 0, 0, config).write_to(out)?;
-                config_sent = true;
+                shared.config_sent = true;
             }
             let keyframe = is_keyframe(&unit);
-            let pts = summary.video_frames * 1_000_000 / u64::from(FPS);
+            let pts = shared.summary.video_frames * 1_000_000 / u64::from(FPS);
             // O `-re` do ffmpeg não limita a fonte lavfi, então o ritmo de tempo real é feito aqui:
             // cada frame só sai no instante do seu pts, como um celular de verdade.
-            let target = *epoch.get_or_insert_with(Instant::now) + Duration::from_micros(pts);
+            let target =
+                *shared.epoch.get_or_insert_with(Instant::now) + Duration::from_micros(pts);
             if let Some(wait) = target.checked_duration_since(Instant::now()) {
                 thread::sleep(wait);
             }
             let flags = if keyframe { FLAG_KEYFRAME } else { 0 };
             if let Err(e) = Frame::new(FrameType::Video, flags, pts, unit).write_to(out) {
                 return if is_disconnect(&e) {
-                    Ok(summary)
+                    Ok(false)
                 } else {
                     Err(e.into())
                 };
             }
-            summary.video_frames += 1;
-            summary.keyframes += u64::from(keyframe);
+            shared.summary.video_frames += 1;
+            shared.summary.keyframes += u64::from(keyframe);
         }
         if let Err(e) = out.flush() {
             return if is_disconnect_io(&e) {
-                Ok(summary)
+                Ok(false)
             } else {
                 Err(e.into())
             };
         }
         if read == 0 {
-            return Ok(summary);
+            return Ok(true);
         }
     }
 }

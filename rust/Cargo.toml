@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/cdc-core",
+    "crates/cdc-ffi",
     "crates/cdc-protocol",
     "crates/cdc-testsender",
     "crates/cdc-testreceiver",
