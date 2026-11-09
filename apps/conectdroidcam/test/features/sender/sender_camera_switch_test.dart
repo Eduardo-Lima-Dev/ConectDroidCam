@@ -1,11 +1,14 @@
 import 'package:conectdroidcam/features/sender/application/sender_controller.dart';
 import 'package:conectdroidcam/features/sender/data/sender_platform.dart';
+import 'package:conectdroidcam/features/sender/domain/sender_models.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_sender_platform.dart';
 
 void main() {
+  group('comandos do computador', remoteTests);
+
   late FakeSenderPlatform platform;
   late ProviderContainer container;
 
@@ -79,4 +82,74 @@ void main() {
       expect(state().busy, isFalse);
     },
   );
+}
+
+void remoteTests() {
+  late FakeSenderPlatform platform;
+  late ProviderContainer container;
+
+  SenderState state() => container.read(senderControllerProvider);
+  Future<void> tick() => Future<void>.delayed(Duration.zero);
+
+  setUp(() async {
+    platform = FakeSenderPlatform()..permissionGranted = true;
+    container = ProviderContainer(
+      overrides: [senderPlatformProvider.overrideWithValue(platform)],
+    );
+    addTearDown(container.dispose);
+    await container.read(senderControllerProvider.notifier).start();
+  });
+
+  test('o computador liga a transmissão e o celular acompanha', () async {
+    platform.emit(
+      const RemoteStreamEvent(
+        streaming: true,
+        stream: StreamInfo(
+          mode: VideoMode(1280, 720),
+          fps: 24,
+          bitrateKbps: 3000,
+          port: 47821,
+        ),
+      ),
+    );
+    await tick();
+    expect(state().isStreaming, isTrue);
+    expect(state().selected, const VideoMode(1280, 720));
+    expect(state().selectedFps, 24);
+  });
+
+  test('o computador desliga e o celular volta a ficar pronto', () async {
+    platform.emit(
+      const RemoteStreamEvent(
+        streaming: true,
+        stream: StreamInfo(
+          mode: VideoMode(1280, 720),
+          fps: 30,
+          bitrateKbps: 3000,
+          port: 47821,
+        ),
+      ),
+    );
+    await tick();
+    platform.emit(const RemoteStreamEvent(streaming: false));
+    await tick();
+    expect(state().phase, SenderPhase.ready);
+    expect(state().stream, isNull);
+  });
+
+  test('o computador troca a câmera e a prévia acompanha', () async {
+    platform.emit(
+      const CameraChangedEvent(
+        PreviewInfo(
+          textureId: 1,
+          width: 1280,
+          height: 720,
+          isFront: true,
+          canSwitch: true,
+        ),
+      ),
+    );
+    await tick();
+    expect(state().preview!.isFront, isTrue);
+  });
 }

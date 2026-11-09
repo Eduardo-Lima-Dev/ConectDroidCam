@@ -245,6 +245,23 @@ class DiscoveryEvent extends SenderEvent {
   final String? error;
 }
 
+/// O computador ligou, desligou ou mudou a transmissão (resolução, FPS).
+class RemoteStreamEvent extends SenderEvent {
+  const RemoteStreamEvent({required this.streaming, this.stream});
+
+  final bool streaming;
+
+  /// O que o celular entrega agora; `null` quando parou.
+  final StreamInfo? stream;
+}
+
+/// O computador trocou a câmera; esta é a prévia da câmera nova.
+class CameraChangedEvent extends SenderEvent {
+  const CameraChangedEvent(this.preview);
+
+  final PreviewInfo preview;
+}
+
 class ErrorEvent extends SenderEvent {
   const ErrorEvent(this.message);
 

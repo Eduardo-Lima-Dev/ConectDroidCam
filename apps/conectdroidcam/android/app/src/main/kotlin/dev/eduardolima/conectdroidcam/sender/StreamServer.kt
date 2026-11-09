@@ -22,7 +22,8 @@ import java.util.concurrent.atomic.AtomicLong
  * completude, como em docs/protocol-v1.md).
  *
  * ATENÇÃO: ainda não há TLS nem pareamento. Qualquer aparelho da rede que chegue
- * à porta recebe o vídeo. Isso é provisório, até as fases de segurança.
+ * à porta recebe o vídeo e também pode ligar, desligar e comandar a câmera.
+ * Isso é provisório, até as fases de segurança.
  */
 class StreamServer(
     private val port: Int,
@@ -36,6 +37,12 @@ class StreamServer(
 
         /** O cliente pediu, ou o descarte exige, um novo IDR. */
         fun onKeyframeNeeded()
+
+        /**
+         * O computador mandou um comando (`stream.start`, `stream.stop`, `fps.set` ou
+         * `camera.switch`). Chega na thread de leitura; quem trata volta à thread principal.
+         */
+        fun onCommand(type: String, message: JSONObject)
     }
 
     data class Counters(val frames: Long, val bytes: Long, val dropped: Long, val clientConnected: Boolean)
@@ -51,6 +58,9 @@ class StreamServer(
     @Volatile private var info = StreamInfo(0, 0, 0, 0, 0)
     @Volatile private var videoConfig: ByteArray? = null
     @Volatile private var profiles: List<Map<String, Any?>> = emptyList()
+
+    /** Última descrição do que o celular sabe fazer; reenviada a cada cliente novo. */
+    @Volatile private var capabilities: Protocol.Frame? = null
     private var basePtsUs = -1L
 
     /** [rotation]: graus, no sentido horário, que o quadro precisa girar para ficar em pé. */
@@ -66,6 +76,31 @@ class StreamServer(
         info = StreamInfo(width, height, fps, bitrateKbps, rotation)
         videoConfig = null
         basePtsUs = -1L
+        // Um cliente já conectado precisa saber o novo tamanho antes do primeiro quadro.
+        client?.enqueueControl(profileActualFrame())
+    }
+
+    /** A transmissão parou, mas o servidor e a conexão continuam. */
+    fun clearStream() {
+        info = StreamInfo(0, 0, 0, 0, 0)
+        videoConfig = null
+        basePtsUs = -1L
+    }
+
+    /** Informa ao cliente o que o celular sabe fazer e em que estado está. */
+    fun setCapabilities(frame: Protocol.Frame) {
+        capabilities = frame
+        client?.enqueueControl(frame)
+    }
+
+    /** Responde a um comando que não pôde ser executado. */
+    fun sendError(message: String) {
+        client?.enqueueControl(
+            Protocol.control("error") {
+                put("code", "COMMAND_FAILED")
+                put("message", message)
+            },
+        )
     }
 
     /** O FPS mudou com a transmissão ligada: avisa o cliente com um novo `profile.actual`. */
@@ -163,7 +198,8 @@ class StreamServer(
                     put("appVersion", appVersion)
                 },
             )
-            enqueueControl(profileActualFrame())
+            capabilities?.let { enqueueControl(it) }
+            if (info.width > 0) enqueueControl(profileActualFrame())
             videoConfig?.let { enqueueControl(Protocol.Frame(Protocol.TYPE_VIDEO_CONFIG, 0, 0, it)) }
             listener.onClientConnected(peer)
             listener.onKeyframeNeeded()
@@ -248,6 +284,8 @@ class StreamServer(
                                 )
                             },
                         )
+                        "stream.start", "stream.stop", "fps.set", "camera.switch" ->
+                            listener.onCommand(message.optString("type"), message)
                         "session.stop" -> break
                     }
                 }

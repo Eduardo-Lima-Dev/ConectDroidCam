@@ -254,17 +254,9 @@ class SenderController extends Notifier<SenderState> {
     state = state.copyWith(busy: true, notice: () => null);
     try {
       final preview = await _platform.switchCamera(front: !current.isFront);
-      final capabilities = await _platform.listModes();
-      final selected = state.isStreaming
-          ? state.selected
-          : _pickMode(capabilities, state.selected);
-      state = state.copyWith(
-        preview: () => preview,
-        capabilities: capabilities,
-        selected: selected,
-        selectedFps: capabilities.clampFps(selected, state.selectedFps),
-        busy: false,
-      );
+      state = state.copyWith(preview: () => preview);
+      await _refreshModes();
+      state = state.copyWith(busy: false);
     } on SenderException catch (e) {
       state = state.copyWith(busy: false, notice: () => e.message);
     }
@@ -308,9 +300,6 @@ class SenderController extends Notifier<SenderState> {
     state = state.copyWith(
       phase: SenderPhase.ready,
       stream: () => null,
-      clientPeer: () => null,
-      visibleAs: () => null,
-      visibilityError: () => null,
       measuredFps: 0,
       bitrateKbps: 0,
       busy: false,
@@ -338,6 +327,32 @@ class SenderController extends Notifier<SenderState> {
             preview: () => preview.copyWith(displayRotation: displayRotation),
           );
         }
+      case RemoteStreamEvent(:final streaming, :final stream):
+        // O computador mandou: o estado daqui acompanha.
+        if (streaming && stream != null) {
+          state = state.copyWith(
+            phase: SenderPhase.streaming,
+            stream: () => stream,
+            selected: stream.mode,
+            selectedFps: stream.fps,
+            measuredFps: 0,
+            bitrateKbps: 0,
+            dropped: 0,
+            busy: false,
+            notice: () => null,
+          );
+        } else if (state.isStreaming) {
+          state = state.copyWith(
+            phase: SenderPhase.ready,
+            stream: () => null,
+            measuredFps: 0,
+            bitrateKbps: 0,
+            busy: false,
+          );
+        }
+      case CameraChangedEvent(:final preview):
+        state = state.copyWith(preview: () => preview);
+        unawaited(_refreshModes());
       case DiscoveryEvent(:final registered, :final name, :final error):
         state = state.copyWith(
           visibleAs: () => registered ? name : null,
@@ -346,6 +361,23 @@ class SenderController extends Notifier<SenderState> {
       case ErrorEvent(:final message):
         // O código nativo já parou tudo; a interface só reflete o estado.
         _fail(message);
+    }
+  }
+
+  /// Relê o que a câmera em uso oferece, depois de ela mudar.
+  Future<void> _refreshModes() async {
+    try {
+      final capabilities = await _platform.listModes();
+      final selected = state.isStreaming
+          ? state.selected
+          : _pickMode(capabilities, state.selected);
+      state = state.copyWith(
+        capabilities: capabilities,
+        selected: selected,
+        selectedFps: capabilities.clampFps(selected, state.selectedFps),
+      );
+    } on SenderException catch (e) {
+      state = state.copyWith(notice: () => e.message);
     }
   }
 

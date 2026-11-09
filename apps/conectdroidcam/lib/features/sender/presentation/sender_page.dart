@@ -502,7 +502,8 @@ class _ControlPanel extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: 16),
-        if (state.isStreaming) _ConnectionInfo(state: state),
+        if (state.isStreaming || state.phase == SenderPhase.ready)
+          _ConnectionInfo(state: state),
       ],
     );
   }
@@ -524,6 +525,14 @@ class _StatusLine extends StatelessWidget {
       SenderState(isStreaming: true) => (
         'Aguardando o computador conectar',
         Colors.amberAccent,
+      ),
+      SenderState(phase: SenderPhase.ready, clientPeer: final peer?) => (
+        'Conectado a $peer: o computador comanda a transmissão',
+        Colors.greenAccent,
+      ),
+      SenderState(phase: SenderPhase.ready) => (
+        'Pronto: inicie aqui ou pelo computador',
+        theme.colorScheme.onSurfaceVariant,
       ),
       _ => ('Pronto', theme.colorScheme.onSurfaceVariant),
     };
@@ -688,7 +697,7 @@ class _ConnectionInfo extends StatelessWidget {
             SelectableText(
               address == null
                   ? 'Sem rede local'
-                  : '${address.address}:${stream?.port ?? ''}',
+                  : '${address.address}:${stream?.port ?? 47821}',
               style: mono,
             ),
             const SizedBox(height: 6),

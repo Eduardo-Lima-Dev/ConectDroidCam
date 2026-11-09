@@ -361,7 +361,7 @@ void main() {
       },
     );
 
-    test('ao parar a transmissão o anúncio some', () async {
+    test('ao parar a transmissão o celular continua visível na rede', () async {
       await controller().start();
       await controller().startStreaming();
       platform.emit(const DiscoveryEvent(registered: true, name: 'X'));
@@ -369,7 +369,7 @@ void main() {
 
       await controller().stopStreaming();
 
-      expect(state().visibleAs, isNull);
+      expect(state().visibleAs, 'X');
     });
   });
 }

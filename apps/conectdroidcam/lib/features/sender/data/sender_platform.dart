@@ -163,6 +163,21 @@ class ChannelSenderPlatform implements SenderPlatform {
           name: raw['name'] as String?,
           error: raw['error'] as String?,
         );
+      case 'remote':
+        final streaming = raw['streaming']! as bool;
+        return RemoteStreamEvent(
+          streaming: streaming,
+          stream: streaming
+              ? StreamInfo(
+                  mode: VideoMode(raw['width']! as int, raw['height']! as int),
+                  fps: raw['fps']! as int,
+                  bitrateKbps: raw['bitrateKbps']! as int,
+                  port: raw['port']! as int,
+                )
+              : null,
+        );
+      case 'camera':
+        return CameraChangedEvent(_parsePreview(raw));
       case 'error':
         return ErrorEvent(raw['message']! as String);
       default:

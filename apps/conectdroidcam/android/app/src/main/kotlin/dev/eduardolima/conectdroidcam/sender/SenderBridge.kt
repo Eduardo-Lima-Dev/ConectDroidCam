@@ -11,6 +11,8 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
+import org.json.JSONObject
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -21,7 +23,8 @@ import java.net.NetworkInterface
  * listModes, localAddresses, startPreview, stopPreview, startStreaming(width, height, fps),
  * setFps(fps), switchCamera(front), stopStreaming.
  *
- * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | discovery | error.
+ * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | discovery | error
+ * | remote (o computador ligou, desligou ou mudou a transmissão) | camera (o computador trocou a câmera).
  */
 class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     MethodChannel.MethodCallHandler,
@@ -35,6 +38,9 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     private var camera: CameraController? = null
     private var encoder: VideoEncoder? = null
     private var server: StreamServer? = null
+
+    /** A transmissão foi ligada por ordem do computador: ela acaba quando ele desconecta. */
+    private var startedByRemote = false
     private val advertiser = NsdAdvertiser(activity)
     private var pendingPermission: MethodChannel.Result? = null
     private var statsTask: Runnable? = null
@@ -156,6 +162,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
             main.post {
                 outcome.fold(
                     onSuccess = {
+                        startListening()
                         result.success(previewMap(it))
                     },
                     onFailure = { result.error("camera", it.message ?: "Falha ao abrir a câmera", null) },
@@ -179,17 +186,25 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
      * só fica parado enquanto a câmera nova abre, e a rotação enviada ao computador é refeita.
      */
     private fun switchCamera(front: Boolean?, result: MethodChannel.Result) {
-        val cam = camera ?: return result.error("state", "Abra a prévia primeiro", null)
+        doSwitchCamera(front) { outcome ->
+            outcome.fold(
+                onSuccess = { result.success(previewMap(it)) },
+                onFailure = { result.error("camera", it.message ?: "Falha ao trocar de câmera", null) },
+            )
+        }
+    }
+
+    /** Troca de câmera pedida pelo celular ou pelo computador; [done] roda na thread principal. */
+    private fun doSwitchCamera(front: Boolean?, done: (Result<CameraController.Preview>) -> Unit) {
+        val cam = camera ?: return done(Result.failure(IllegalStateException("Abra a prévia primeiro")))
         val wantFront = front ?: !cam.isFrontFacing
         cam.switchFacing(wantFront, streamSize) { outcome ->
             main.post {
-                outcome.fold(
-                    onSuccess = {
-                        server?.updateRotation(videoRotation(cam))
-                        result.success(previewMap(it))
-                    },
-                    onFailure = { result.error("camera", it.message ?: "Falha ao trocar de câmera", null) },
-                )
+                outcome.onSuccess {
+                    server?.updateRotation(videoRotation(cam))
+                    publishCapabilities()
+                }
+                done(outcome)
             }
         }
     }
@@ -200,48 +215,60 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         if (width == null || height == null || fps == null) {
             return result.error("argument", "Informe largura, altura e FPS", null)
         }
-        val cam = camera ?: return result.error("state", "Abra a prévia antes de transmitir", null)
-        if (encoder != null) return result.error("state", "Já está transmitindo", null)
+        doStartStreaming(width, height, fps, remote = false) { outcome ->
+            outcome.fold(
+                onSuccess = { result.success(it) },
+                onFailure = { result.error("start", it.message ?: "Não foi possível iniciar a transmissão", null) },
+            )
+        }
+    }
+
+    /**
+     * Liga o codificador e a câmera. Serve ao botão do celular e ao comando do computador
+     * ([remote]); [done] roda na thread principal.
+     */
+    private fun doStartStreaming(
+        width: Int,
+        height: Int,
+        fps: Int,
+        remote: Boolean,
+        done: (Result<Map<String, Any?>>) -> Unit,
+    ) {
+        fun fail(message: String) = done(Result.failure(IllegalStateException(message)))
+
+        val cam = camera ?: return fail("Abra a prévia antes de transmitir")
+        val currentServer = server ?: return fail("O servidor não está ligado")
+        if (encoder != null) return fail("Já está transmitindo")
 
         val modes = cameraModes(cam)
         val mode = modes.firstOrNull { it["width"] == width && it["height"] == height }
         if (mode == null || mode["available"] != true) {
-            return result.error("unsupported", "Resolução indisponível neste aparelho", null)
+            return fail("Resolução indisponível neste aparelho")
         }
         val maxFps = mode["maxFps"] as Int
         if (fps !in cam.fixedFpsOptions() || fps > maxFps) {
-            return result.error("unsupported", "FPS indisponível nesta resolução", null)
+            return fail("FPS indisponível nesta resolução")
         }
 
         val bitrate = bitrateFor(width, height)
-        val newServer = StreamServer(PORT, APP_VERSION, this)
         val newEncoder = VideoEncoder(width, height, fps, bitrate, this)
-        // Atribuídos antes de iniciar: o codificador entrega o SPS/PPS logo ao começar, e
+        // Atribuído antes de iniciar: o codificador entrega o SPS/PPS logo ao começar, e
         // `onConfig` precisa encontrar o servidor, senão a configuração se perde.
-        server = newServer
         encoder = newEncoder
         try {
-            newServer.setStream(width, height, fps, bitrate, videoRotation(cam))
-            newServer.setProfiles(CodecSupport.namedAvailability(modes))
-            newServer.start()
+            currentServer.setStream(width, height, fps, bitrate, videoRotation(cam))
+            currentServer.setProfiles(CodecSupport.namedAvailability(modes))
             newEncoder.start()
         } catch (e: Exception) {
-            newServer.stop()
             newEncoder.stop()
-            server = null
             encoder = null
-            return result.error("start", e.message ?: "Não foi possível iniciar a transmissão", null)
+            currentServer.clearStream()
+            return fail(e.message ?: "Não foi possível iniciar a transmissão")
         }
 
-        advertiser.start(PORT, APP_VERSION) { name, error ->
-            main.post {
-                events?.success(
-                    mapOf("event" to "discovery", "registered" to (name != null), "name" to name, "error" to error),
-                )
-            }
-        }
         streamMaxFps = maxFps
         streamSize = Size(width, height)
+        startedByRemote = remote
         cam.targetFps = fps
         cam.attachEncoder(newEncoder.inputSurface) { outcome ->
             main.post {
@@ -249,19 +276,22 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                     onSuccess = {
                         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         startStats()
-                        result.success(
-                            mapOf(
-                                "width" to width,
-                                "height" to height,
-                                "fps" to fps,
-                                "bitrateKbps" to bitrate,
-                                "port" to PORT,
+                        publishCapabilities()
+                        done(
+                            Result.success(
+                                mapOf(
+                                    "width" to width,
+                                    "height" to height,
+                                    "fps" to fps,
+                                    "bitrateKbps" to bitrate,
+                                    "port" to PORT,
+                                ),
                             ),
                         )
                     },
                     onFailure = {
                         stopStreaming()
-                        result.error("camera", it.message ?: "Falha ao ligar a câmera ao codificador", null)
+                        fail(it.message ?: "Falha ao ligar a câmera ao codificador")
                     },
                 )
             }
@@ -270,19 +300,136 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
 
     /** Muda o FPS com a transmissão ligada, sem reiniciar câmera nem codificador. */
     private fun setFps(fps: Int?, result: MethodChannel.Result) {
-        val cam = camera ?: return result.error("state", "Abra a prévia primeiro", null)
+        doSetFps(fps) { outcome ->
+            outcome.fold(
+                onSuccess = { result.success(null) },
+                onFailure = { result.error("argument", it.message ?: "Falha ao mudar o FPS", null) },
+            )
+        }
+    }
+
+    private fun doSetFps(fps: Int?, done: (Result<Unit>) -> Unit) {
+        val cam = camera ?: return done(Result.failure(IllegalStateException("Abra a prévia primeiro")))
         if (fps == null || fps !in cam.fixedFpsOptions() || fps > streamMaxFps) {
-            return result.error("argument", "FPS inválido para esta resolução: $fps", null)
+            return done(Result.failure(IllegalArgumentException("FPS inválido para esta resolução: $fps")))
         }
         cam.setFps(fps) { outcome ->
             main.post {
-                outcome.fold(
-                    onSuccess = {
-                        server?.updateFps(fps)
-                        result.success(null)
-                    },
-                    onFailure = { result.error("camera", it.message ?: "Falha ao mudar o FPS", null) },
+                outcome.onSuccess { server?.updateFps(fps) }
+                done(outcome)
+            }
+        }
+    }
+
+    // --- Servidor e comandos do computador ------------------------------------------------
+
+    /**
+     * Liga o servidor e o anúncio na rede assim que a prévia abre, e não só ao transmitir:
+     * assim o computador acha o celular, conecta e decide o resto.
+     */
+    private fun startListening() {
+        if (server != null) return
+        val newServer = StreamServer(PORT, APP_VERSION, this)
+        try {
+            newServer.start()
+        } catch (e: Exception) {
+            events?.success(mapOf("event" to "error", "message" to "Não consegui abrir a porta $PORT: ${e.message}"))
+            return
+        }
+        server = newServer
+        publishCapabilities()
+        advertiser.start(PORT, APP_VERSION) { name, error ->
+            main.post {
+                events?.success(
+                    mapOf("event" to "discovery", "registered" to (name != null), "name" to name, "error" to error),
                 )
+            }
+        }
+    }
+
+    /** Descreve ao computador o que a câmera em uso oferece e se há transmissão. */
+    private fun publishCapabilities() {
+        val cam = camera ?: return
+        val currentServer = server ?: return
+        val frame = Protocol.control("capabilities") {
+            put(
+                "modes",
+                JSONArray().also { array ->
+                    cameraModes(cam).forEach { m ->
+                        array.put(
+                            JSONObject().apply {
+                                put("width", m["width"])
+                                put("height", m["height"])
+                                put("available", m["available"])
+                                put("maxFps", m["maxFps"])
+                                (m["reason"] as? String)?.let { put("reason", it) }
+                            },
+                        )
+                    }
+                },
+            )
+            put("fpsOptions", JSONArray(cam.fixedFpsOptions()))
+            put("facing", if (cam.isFrontFacing) "front" else "back")
+            put("canSwitch", cam.canSwitch())
+            put("streaming", encoder != null)
+        }
+        currentServer.setCapabilities(frame)
+    }
+
+    /** Avisa a interface do celular de uma mudança feita pelo computador. */
+    private fun notifyRemoteState() {
+        val size = streamSize
+        events?.success(
+            mapOf(
+                "event" to "remote",
+                "streaming" to (encoder != null),
+                "width" to (size?.width ?: 0),
+                "height" to (size?.height ?: 0),
+                "fps" to (camera?.targetFps ?: DEFAULT_FPS),
+                "bitrateKbps" to (size?.let { bitrateFor(it.width, it.height) } ?: 0),
+                "port" to PORT,
+            ),
+        )
+    }
+
+    override fun onCommand(type: String, message: JSONObject) {
+        main.post { handleCommand(type, message) }
+    }
+
+    private fun handleCommand(type: String, message: JSONObject) {
+        fun refuse(reason: String?) = server?.sendError(reason ?: "Não foi possível executar o comando")
+        when (type) {
+            "stream.start" -> {
+                val width = message.optInt("width", 0)
+                val height = message.optInt("height", 0)
+                val fps = message.optInt("fps", 0)
+                doStartStreaming(width, height, fps, remote = true) { outcome ->
+                    outcome.fold(onSuccess = { notifyRemoteState() }, onFailure = { refuse(it.message) })
+                }
+            }
+            "stream.stop" -> {
+                if (encoder != null) stopStreaming()
+                notifyRemoteState()
+            }
+            "fps.set" -> doSetFps(message.optInt("fps", 0)) { outcome ->
+                outcome.fold(onSuccess = { notifyRemoteState() }, onFailure = { refuse(it.message) })
+            }
+            "camera.switch" -> {
+                val front = when (message.optString("facing")) {
+                    "front" -> true
+                    "back" -> false
+                    else -> null
+                }
+                doSwitchCamera(front) { outcome ->
+                    outcome.fold(
+                        onSuccess = {
+                            events?.success(
+                                mapOf("event" to "camera") + previewMap(it),
+                            )
+                        },
+                        onFailure = { refuse(it.message) },
+                    )
+                }
             }
         }
     }
@@ -295,14 +442,17 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         camera?.detachEncoder()
         encoder?.stop()
         encoder = null
-        advertiser.stop()
-        server?.stop()
-        server = null
+        startedByRemote = false
+        server?.clearStream()
+        publishCapabilities()
         main.post { activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
     fun stopAll() {
         stopStreaming()
+        advertiser.stop()
+        server?.stop()
+        server = null
         camera?.stop()
         camera = null
     }
@@ -352,7 +502,14 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     }
 
     override fun onClientDisconnected() {
-        main.post { events?.success(mapOf("event" to "client", "connected" to false)) }
+        main.post {
+            events?.success(mapOf("event" to "client", "connected" to false))
+            // Quem ligou a transmissão foi o computador e ele foi embora: ninguém assiste.
+            if (startedByRemote && encoder != null) {
+                stopStreaming()
+                notifyRemoteState()
+            }
+        }
     }
 
     override fun onKeyframeNeeded() {
