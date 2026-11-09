@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ConectDroidCam
+GenericName=Webcam pelo celular
+Comment=Use a câmera do celular como webcam no computador
+Exec=conectdroidcam
+Icon=dev.eduardolima.conectdroidcam
+Terminal=false
+Categories=AudioVideo;Video;Network;
+Keywords=webcam;camera;celular;obs;
+StartupWMClass=dev.eduardolima.conectdroidcam
