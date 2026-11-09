@@ -28,7 +28,7 @@ class CameraController(
     private val textures: TextureRegistry,
     private val onFatal: (String) -> Unit,
 ) {
-    data class Preview(val textureId: Long, val width: Int, val height: Int)
+    data class Preview(val textureId: Long, val width: Int, val height: Int, val sensorOrientation: Int)
 
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     val cameraId: String = pickCameraId()
@@ -89,7 +89,8 @@ class CameraController(
         textureEntry.surfaceTexture().setDefaultBufferSize(size.width, size.height)
         entry = textureEntry
         previewSurface = Surface(textureEntry.surfaceTexture())
-        val info = Preview(textureEntry.id(), size.width, size.height)
+        val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+        val info = Preview(textureEntry.id(), size.width, size.height, sensorOrientation)
 
         try {
             manager.openCamera(

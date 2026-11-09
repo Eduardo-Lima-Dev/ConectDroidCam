@@ -42,19 +42,56 @@ class ProfileAvailability {
   final String? reason;
 }
 
-/// Câmera aberta para a prévia: textura do Flutter e tamanho do buffer.
+/// Câmera aberta para a prévia: textura do Flutter e como orientá-la.
+///
+/// O Camera2 entrega a textura já alinhada à orientação natural do aparelho
+/// (retrato, na maioria dos celulares). Com a tela em paisagem é preciso girá-la de
+/// volta, senão a imagem aparece espremida e deitada.
 class PreviewInfo {
   const PreviewInfo({
     required this.textureId,
     required this.width,
     required this.height,
+    this.sensorOrientation = 90,
+    this.displayRotation = 0,
   });
 
   final int textureId;
+
+  /// Tamanho do buffer da câmera, em paisagem (como o sensor entrega).
   final int width;
   final int height;
 
-  double get aspectRatio => height == 0 ? 16 / 9 : width / height;
+  /// Quanto o sensor está girado em relação à orientação natural: 0, 90, 180 ou 270.
+  final int sensorOrientation;
+
+  /// Rotação da tela: 0, 1, 2 ou 3 (0°, 90°, 180°, 270° como em `Surface.ROTATION_*`).
+  final int displayRotation;
+
+  PreviewInfo copyWith({int? displayRotation}) => PreviewInfo(
+    textureId: textureId,
+    width: width,
+    height: height,
+    sensorOrientation: sensorOrientation,
+    displayRotation: displayRotation ?? this.displayRotation,
+  );
+
+  /// Sensores girados 90° ou 270° entregam a textura com largura e altura trocadas.
+  bool get _swapsAxes => sensorOrientation % 180 != 0;
+
+  /// Proporção da textura como ela chega, antes de girar.
+  double get textureAspectRatio {
+    if (height == 0 || width == 0) return 16 / 9;
+    return _swapsAxes ? height / width : width / height;
+  }
+
+  /// Giros de 90° no sentido horário para deixar a imagem em pé na tela atual.
+  int get quarterTurns => switch (displayRotation) {
+    1 => 3,
+    2 => 2,
+    3 => 1,
+    _ => 0,
+  };
 }
 
 /// O que o emissor realmente está entregando.
@@ -112,6 +149,13 @@ class StatsEvent extends SenderEvent {
   final double fps;
   final double bitrateKbps;
   final int dropped;
+}
+
+/// A tela girou; a prévia precisa ser reorientada.
+class RotationEvent extends SenderEvent {
+  const RotationEvent(this.displayRotation);
+
+  final int displayRotation;
 }
 
 class ErrorEvent extends SenderEvent {

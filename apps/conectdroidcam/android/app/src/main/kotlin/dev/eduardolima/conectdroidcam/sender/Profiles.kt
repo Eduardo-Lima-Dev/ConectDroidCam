@@ -35,12 +35,22 @@ object CodecSupport {
                 MediaFormat.MIMETYPE_VIDEO_AVC in info.supportedTypes &&
                 isHardware(info) &&
                 runCatching {
-                    info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
-                        .videoCapabilities
-                        .areSizeAndRateSupported(width, height, fps.toDouble())
+                    val video = info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).videoCapabilities
+                    // O Android exige largura e altura múltiplas do alinhamento do codificador
+                    // (16, em geral). 1080 não é, mas todo codificador aceita 1080p cortando as
+                    // linhas extras do bloco; por isso testamos o tamanho arredondado para cima.
+                    video.areSizeAndRateSupported(
+                        alignUp(width, video.widthAlignment),
+                        alignUp(height, video.heightAlignment),
+                        fps.toDouble(),
+                    )
                 }.getOrDefault(false)
         }
     }
+
+    /** Menor múltiplo de [alignment] que não é menor que [value]. */
+    internal fun alignUp(value: Int, alignment: Int): Int =
+        if (alignment <= 1) value else (value + alignment - 1) / alignment * alignment
 
     fun supportsCbr(info: MediaCodecInfo): Boolean = runCatching {
         info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)

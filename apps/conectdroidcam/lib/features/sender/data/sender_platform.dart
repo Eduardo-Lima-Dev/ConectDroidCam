@@ -86,6 +86,8 @@ class ChannelSenderPlatform implements SenderPlatform {
       textureId: (raw['textureId']! as num).toInt(),
       width: raw['width']! as int,
       height: raw['height']! as int,
+      sensorOrientation: (raw['sensorOrientation'] as int?) ?? 90,
+      displayRotation: (raw['displayRotation'] as int?) ?? 0,
     );
   }
 
@@ -130,6 +132,8 @@ class ChannelSenderPlatform implements SenderPlatform {
           bitrateKbps: (raw['bitrateKbps']! as num).toDouble(),
           dropped: (raw['dropped']! as num).toInt(),
         );
+      case 'rotation':
+        return RotationEvent((raw['displayRotation']! as num).toInt());
       case 'error':
         return ErrorEvent(raw['message']! as String);
       default:

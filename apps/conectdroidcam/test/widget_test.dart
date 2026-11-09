@@ -1,6 +1,6 @@
 import 'package:conectdroidcam/app/app.dart';
 import 'package:conectdroidcam/features/sender/application/sender_controller.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -43,5 +43,27 @@ void main() {
       expect(find.text('Receptor em desenvolvimento'), findsOneWidget);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.linux),
+  );
+
+  testWidgets(
+    'em retrato, a tela se reorganiza em coluna sem estourar',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.75;
+      addTearDown(tester.view.reset);
+      final platform = FakeSenderPlatform()..permissionGranted = true;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [senderPlatformProvider.overrideWithValue(platform)],
+          child: const ConectDroidCamApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Iniciar transmissão'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
   );
 }

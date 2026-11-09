@@ -233,6 +233,13 @@ class SenderController extends Notifier<SenderState> {
           bitrateKbps: bitrateKbps,
           dropped: dropped,
         );
+      case RotationEvent(:final displayRotation):
+        final preview = state.preview;
+        if (preview != null) {
+          state = state.copyWith(
+            preview: () => preview.copyWith(displayRotation: displayRotation),
+          );
+        }
       case ErrorEvent(:final message):
         // O código nativo já parou tudo; a interface só reflete o estado.
         _fail(message);

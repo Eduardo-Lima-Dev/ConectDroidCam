@@ -161,4 +161,24 @@ void main() {
     expect(state().phase, SenderPhase.failed);
     expect(state().error, 'porta em uso');
   });
+
+  test('girar a tela reorienta a prévia sem reiniciar a câmera', () async {
+    await controller().start();
+    expect(state().preview?.displayRotation, 0);
+
+    platform.emit(const RotationEvent(1));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(state().preview?.displayRotation, 1);
+    expect(state().preview?.quarterTurns, 3);
+    expect(state().preview?.textureId, 1);
+    expect(platform.previewStarts, 1);
+  });
+
+  test('rotação sem prévia aberta é ignorada', () async {
+    platform.emit(const RotationEvent(1));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(state().preview, isNull);
+  });
 }

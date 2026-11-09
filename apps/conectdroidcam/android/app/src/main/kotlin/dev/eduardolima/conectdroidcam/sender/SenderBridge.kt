@@ -20,7 +20,7 @@ import java.net.NetworkInterface
  * listProfiles, localAddresses, startPreview, stopPreview, startStreaming(profile),
  * stopStreaming.
  *
- * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | error.
+ * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | error.
  */
 class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     MethodChannel.MethodCallHandler,
@@ -97,6 +97,15 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         result.success(CodecSupport.availability(ensureCamera().encoderSizes()))
     }
 
+    /** 0, 1, 2 ou 3 = Surface.ROTATION_0, 90, 180 ou 270. */
+    @Suppress("DEPRECATION")
+    private fun displayRotation(): Int = activity.windowManager.defaultDisplay.rotation
+
+    /** A tela girou: o Flutter precisa reorientar a prévia. */
+    fun onConfigurationChanged() {
+        events?.success(mapOf("event" to "rotation", "displayRotation" to displayRotation()))
+    }
+
     private fun localAddresses(): List<Map<String, String>> =
         NetworkInterface.getNetworkInterfaces().toList()
             .filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
@@ -115,7 +124,13 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                 outcome.fold(
                     onSuccess = {
                         result.success(
-                            mapOf("textureId" to it.textureId, "width" to it.width, "height" to it.height),
+                            mapOf(
+                                "textureId" to it.textureId,
+                                "width" to it.width,
+                                "height" to it.height,
+                                "sensorOrientation" to it.sensorOrientation,
+                                "displayRotation" to displayRotation(),
+                            ),
                         )
                     },
                     onFailure = { result.error("camera", it.message ?: "Falha ao abrir a câmera", null) },
@@ -137,6 +152,10 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
 
         val newServer = StreamServer(PORT, APP_VERSION, this)
         val newEncoder = VideoEncoder(profile, this)
+        // Atribuídos antes de iniciar: o codificador entrega o SPS/PPS logo ao começar, e
+        // `onConfig` precisa encontrar o servidor, senão a configuração se perde.
+        server = newServer
+        encoder = newEncoder
         try {
             newServer.setStream(profile)
             newServer.setProfiles(CodecSupport.availability(cam.encoderSizes()))
@@ -145,10 +164,10 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         } catch (e: Exception) {
             newServer.stop()
             newEncoder.stop()
+            server = null
+            encoder = null
             return result.error("start", e.message ?: "Não foi possível iniciar a transmissão", null)
         }
-        server = newServer
-        encoder = newEncoder
 
         cam.attachEncoder(newEncoder.inputSurface) { outcome ->
             main.post {

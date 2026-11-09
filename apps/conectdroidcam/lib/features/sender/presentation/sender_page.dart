@@ -147,9 +147,11 @@ class _Console extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              AspectRatio(aspectRatio: 16 / 9, child: preview),
+              // Em retrato a prévia também é retrato: ela ocupa a metade de cima
+              // e se ajusta sozinha à proporção da imagem.
+              Expanded(flex: 5, child: preview),
               const SizedBox(height: 16),
-              Expanded(child: panel),
+              Expanded(flex: 6, child: panel),
             ],
           ),
         );
@@ -175,9 +177,12 @@ class _PreviewBox extends StatelessWidget {
         child: Center(
           child: info == null
               ? const SizedBox.shrink()
-              : AspectRatio(
-                  aspectRatio: info!.aspectRatio,
-                  child: Texture(textureId: info!.textureId),
+              : RotatedBox(
+                  quarterTurns: info!.quarterTurns,
+                  child: AspectRatio(
+                    aspectRatio: info!.textureAspectRatio,
+                    child: Texture(textureId: info!.textureId),
+                  ),
                 ),
         ),
       ),
