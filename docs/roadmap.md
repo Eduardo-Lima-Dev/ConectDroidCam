@@ -53,7 +53,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ não começou.
 | 1 | Spikes e gate G0 | 🟡 |
 | 2 | Fundação (protocolo, testes, CI) | ✅ |
 | 3 | Emissor móvel | 🟡 (Android em boa parte; iOS não começou) |
-| 4 | Núcleo e app do computador | ⬜ |
+| 4 | Núcleo e app do computador | 🟡 (primeira versão no Linux; sem pareamento, TLS nem prévia) |
 | 5 | Saídas (webcam virtual, microfone, OBS) | ⬜ |
 | 6 | USB | ⬜ |
 | 7 | Robustez e segurança | ⬜ |
@@ -90,7 +90,7 @@ Detalhes e medições em [decisoes/fase1-spikes.md](decisoes/fase1-spikes.md).
 
 - [x] Workspace Rust, `cdc-protocol` (frames, mensagens, limites, testes de robustez), `cdc-testsender`, `cdc-testreceiver`.
 - [x] [protocol-v1.md](protocol-v1.md), [arquitetura.md](arquitetura.md), CI.
-- [ ] `flutter_rust_bridge` (adiado para a Fase 4, quando houver código para ligar).
+- [x] `flutter_rust_bridge`: ponte gerada (`scripts/gerar-ponte.sh`), ligada ao build do Linux.
 - [ ] Localização pt-BR e en: as cadeias de texto estão escritas direto em português.
 
 ### Fase 3 — Emissor móvel
@@ -106,10 +106,10 @@ Feito no Android:
 
 Falta:
 
-- [ ] **Orientação do vídeo enviado:** com o celular em pé, a imagem chega deitada ao computador. Falta informar a rotação no protocolo.
+- [x] **Orientação do vídeo enviado:** `profile.actual` ganhou `rotation`; o receptor gira a imagem para ficar em pé e a encaixa num quadro de tamanho fixo. Validado de ponta a ponta com um celular **simulado** até o `/dev/video10`; **falta validar com o celular de verdade** (a fórmula do Android só foi conferida na teoria).
 - [ ] Trocar câmera frontal e traseira.
 - [ ] **Microfone:** AAC sob demanda, ligando e desligando sem derrubar o vídeo.
-- [ ] Anunciar o serviço na rede (mDNS, `_conectdroidcam._tcp`).
+- [x] Anunciar o serviço na rede (mDNS, `_conectdroidcam._tcp`) pelo `NsdManager`. **Falta validar no celular de verdade**; o lado do computador foi validado com um emissor simulado.
 - [ ] Transmissão em segundo plano no Android (serviço em primeiro plano com notificação; o ícone `ic_stat_cdc` já existe).
 - [ ] Superaquecimento, bateria e interrupções da câmera.
 - [ ] Permissão de rede local do Android 17 (`ACCESS_LOCAL_NETWORK`), quando o alvo do app chegar ao SDK 37.
@@ -119,18 +119,24 @@ Falta:
 
 ### Fase 4 — Núcleo e app do computador
 
-Hoje o app do computador é só uma tela provisória; quem recebe o vídeo é o `cdc-testreceiver`, de linha de comando.
+O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imagem e escreve na webcam virtual. Ainda não tem prévia, pareamento nem TLS, e depende do `ffmpeg` do sistema para decodificar. O macOS ainda não tem receptor.
 
-- [ ] Ponte Flutter ↔ Rust (`flutter_rust_bridge`).
-- [ ] `cdc-discovery`: mDNS com entrada manual de IP.
-- [ ] `cdc-transport`: TLS com impressão digital fixada, reconexão com backoff.
+- [x] Ponte Flutter ↔ Rust (`flutter_rust_bridge`) e crate `cdc-core`, que o app e o `cdc-testreceiver` compartilham.
+- [x] Descoberta por mDNS com entrada manual de IP (módulo `discovery` do `cdc-core`).
+- [ ] Transporte com TLS e impressão digital fixada, e reconexão com backoff. Hoje é TCP aberto, e uma queda encerra a sessão.
 - [ ] `cdc-pairing`: código de 6 dígitos, armazenamento seguro, revogação, limite de tentativas e validade de 2 minutos.
 - [ ] `cdc-decode`: aceleração por hardware (VA-API no Linux, VideoToolbox no macOS), com decodificação por software de reserva, e relógio único de áudio e vídeo.
-- [ ] Interface: aparelhos encontrados, pareamento, prévia, resolução real, saídas e estatísticas. Ícone na bandeja (fechar a janela mantém a transmissão).
+- [x] Interface (v1): celulares encontrados, endereço manual, resolução real, rotação aplicada, estatísticas e escolha da webcam virtual e do formato.
+- [x] **Prévia** no app: o mesmo `ffmpeg` gera quadros JPEG de 480 px a 10 por segundo (sem textura do Flutter; o S8 deixou de ser necessário para a prévia). Validada com o celular de verdade em uma execução.
+- [x] **Seis webcams virtuais** (uma por tamanho e formato), escolhidas sozinhas pelo app, para trocar de resolução, tamanho, formato ou posição do celular sem o OBS reabrir a fonte. **Falta o usuário rodar o script com `sudo` e validar no OBS**; o núcleo e o app estão testados só com dispositivos simulados.
+- [x] Celulares lembrados e **conexão automática** (não é segurança; veja o aviso na tela), formato da imagem **Automático/Horizontal/Vertical** e tamanho da saída **HD/Full HD/2K** (fixo, independente da resolução do celular), ambos salvos entre execuções, redescoberta a cada 8 s com a lista vazia e botão "Procurar de novo".
+- [ ] **Controle pelo PC**: escolher resolução e FPS e iniciar/parar a transmissão pelo computador, sem mexer no celular. Exige que o servidor do celular fique ligado desde a abertura do app e mensagens novas no protocolo. **Proposto, ainda não feito.**
+- [ ] Interface: pareamento e ícone na bandeja (fechar a janela mantém a transmissão).
+- [ ] Receptor para macOS (hoje só Linux).
 
 ### Fase 5 — Saídas
 
-- [ ] Linux, vídeo: tamanho fixo por sessão, com escala e letterbox, para a saída não mudar quando o celular gira.
+- [x] Linux, vídeo: tamanho fixo por sessão, com escala e letterbox, para a saída não mudar quando o celular gira (`cdc-core::filter`). Girar no meio da sessão reinicia o `ffmpeg`; **não foi medido** o que o OBS faz nesse instante com um celular de verdade.
 - [ ] Linux, áudio: nó `ConectDroidCam Microphone` no PipeWire.
 - [ ] Linux: assistente que detecta o módulo `v4l2loopback`, o Secure Boot e o OBS em Flatpak.
 - [ ] macOS: plugin do OBS (memória compartilhada e socket Unix) e instalador.
@@ -163,7 +169,8 @@ Hoje o app do computador é só uma tela provisória; quem recebe o vídeo é o 
 ## Ordem recomendada
 
 1. ~~Validar o dispositivo `/dev/video10` no OBS~~ **Feito**: a imagem do celular aparece no OBS. Falta só o Firefox e o Chromium.
-2. **Fase 4 (app do Linux)**, para o computador e o celular abrirem juntos, já com mDNS.
+   ~~Orientação do vídeo enviado~~ **Feita** (falta conferir no celular de verdade).
+2. ~~Fase 4 (app do Linux)~~ **Primeira versão feita**: o app acha o celular por mDNS e conecta. Falta validar com o celular de verdade, e vêm a seguir a prévia e o pareamento.
 3. **Pareamento e TLS**, antes de qualquer uso fora de uma rede de confiança.
 4. **Microfone e orientação do vídeo.**
 5. **USB do Android.**

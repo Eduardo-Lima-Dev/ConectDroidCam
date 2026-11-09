@@ -6,7 +6,7 @@
 
 Use a câmera do celular (Android ou iPhone) como webcam no computador (Linux ou macOS), por Wi-Fi ou cabo USB, para o OBS Studio e outros programas.
 
-> **Estado:** em desenvolvimento. A câmera do celular Android já chega ao **OBS no Linux** por Wi-Fi, passando por uma webcam virtual, mas o lado do computador ainda é uma ferramenta de linha de comando: o app do computador, o pareamento, o áudio, o USB e o iPhone ainda não estão prontos. Veja o [roadmap](docs/roadmap.md).
+> **Estado:** em desenvolvimento. A câmera do celular Android já chega ao **OBS no Linux** por Wi-Fi, passando por uma webcam virtual, e o app do Linux acha o celular na rede e conecta. Ainda **não há pareamento nem criptografia** (qualquer aparelho da rede que ache o celular recebe o vídeo), nem áudio, USB, prévia no computador, iPhone ou macOS. Veja o [roadmap](docs/roadmap.md).
 
 ## Como vai funcionar
 
@@ -36,6 +36,7 @@ Use a câmera do celular (Android ou iPhone) como webcam no computador (Linux ou
 - **Comece por aqui:** [Roadmap](docs/roadmap.md) (fases, o que já foi feito e o que falta) e [Guia de desenvolvimento](docs/desenvolvimento.md) (ambiente, como rodar tudo, convenções e armadilhas conhecidas)
 - [Arquitetura](docs/arquitetura.md)
 - [Protocolo v1](docs/protocol-v1.md)
+- [Usar a câmera do celular no OBS](docs/usar-com-obs.md)
 - [Conectar o celular pelo ADB (Linux e macOS)](docs/guia-adb.md)
 - [Preparar o Mac (iOS e macOS)](docs/configurar-mac.md)
 - [Resultados dos spikes da Fase 1](docs/decisoes/fase1-spikes.md)

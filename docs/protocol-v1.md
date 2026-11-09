@@ -58,7 +58,7 @@ Frames de tipo 0 carregam um objeto JSON com o envelope:
 | `profile.query` | Computador | — | Pergunta quais perfis o celular suporta |
 | `profile.list` | Celular | `profiles[]`: `profile`, `available`, `reason?` | Disponibilidade de cada perfil, com o motivo quando indisponível |
 | `profile.set` | Computador | `profile`, `bitrateKbps?` | Escolhe o perfil |
-| `profile.actual` | Celular | `width`, `height`, `fps`, `bitrateKbps` | O que o celular realmente entrega. É reenviado quando o FPS muda com a transmissão ligada |
+| `profile.actual` | Celular | `width`, `height`, `fps`, `bitrateKbps`, `rotation?` | O que o celular realmente entrega. É reenviado quando o FPS ou a rotação mudam com a transmissão ligada |
 | `audio.set` | Computador | `enabled` | Liga ou desliga o microfone |
 | `camera.switch` | Computador | `facing?` (`front`, `back`) | Troca de câmera; sem `facing`, alterna |
 | `keyframe.request` | Computador | — | Pede um IDR |
@@ -75,7 +75,15 @@ Frames de tipo 0 carregam um objeto JSON com o envelope:
 
 **FPS:** o celular escolhe o FPS (de 15 a 30 neste aparelho) e pode mudá-lo durante a transmissão, sem reiniciar câmera nem codificador. Como o codificador continua configurado para o FPS inicial, o bitrate por frame sobe quando o FPS cai.
 
+**Rotação:** o codificador de um celular entrega os quadros na orientação do sensor, que é sempre horizontal; com o aparelho em pé a imagem chega deitada. `rotation` diz quantos graus, **no sentido horário**, o quadro decodificado precisa girar para ficar em pé: `0`, `90`, `180` ou `270`. Ausente (emissores anteriores a este campo) vale `0`; qualquer outro valor é tratado como `0` pelo receptor. No Android é `(orientação do sensor − rotação da tela) mod 360` para a câmera traseira. Quando o celular gira, o emissor reenvia `profile.actual` com a nova rotação, e o receptor reinicia a saída no próximo keyframe (ele pede um por `keyframe.request`).
+
+O receptor **não muda o tamanho do quadro de saída** durante a sessão, e nem entre sessões, quando a resolução do celular muda: a imagem girada é ajustada a um quadro de tamanho fixo escolhido no receptor (HD, Full HD ou 2K; horizontal ou vertical), com barras pretas nas sobras. Mudar o tamanho de uma webcam virtual faz o OBS e os navegadores perderem o dispositivo.
+
 **Resolução real:** `profile.actual` é a fonte da verdade. A interface mostra o que ele informa, não o que foi pedido, e nunca reduz abaixo de 720p em silêncio.
+
+## 3.1 Descoberta na rede
+
+O celular anuncia o servidor por mDNS enquanto transmite: serviço `_conectdroidcam._tcp`, nome `ConectDroidCam <modelo>`, porta `47821`, TXT `version` e `protocol`. O computador procura esse serviço e só lista celulares que tenham um endereço IPv4 utilizável. Se o anúncio falhar (algumas redes bloqueiam multicast), o app do celular diz o motivo e o computador ainda conecta pelo endereço digitado.
 
 ## 4. Erros
 

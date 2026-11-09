@@ -22,7 +22,8 @@ Nada fora do repositório é necessário: não há segredos, chaves nem configur
 | Ferramenta | Versão | Para quê |
 |---|---|---|
 | Flutter | **3.44.4** (fixada em `.flutter-version`; Dart 3.12) | App |
-| Rust | estável, edição 2024, mínimo 1.90 (`rust/rust-toolchain.toml`) | Protocolo e ferramentas de teste |
+| Rust | estável, edição 2024, mínimo 1.90 (`rust/rust-toolchain.toml`) | Núcleo do receptor, protocolo e ferramentas de teste. **O `cargo` precisa estar no PATH ao compilar o app do Linux**: o CMake o chama para gerar o `libcdc_ffi.so` |
+| `flutter_rust_bridge_codegen` | 2.13.0 (`cargo install flutter_rust_bridge_codegen --version 2.13.0`) | Só para regenerar a ponte depois de mudar `rust/crates/cdc-ffi/src/api.rs` (`scripts/gerar-ponte.sh`) |
 | FFmpeg (`ffmpeg`, `ffprobe`) | qualquer recente | Testes do Rust e do receptor |
 | Android SDK e `adb` | SDK 36 | Compilar e rodar no Android (veja o [guia do ADB](guia-adb.md)) |
 | Python 3 com Pillow | | Gerar os ícones ([identidade visual](identidade-visual.md)) |
@@ -39,13 +40,16 @@ Para **iOS e macOS**: um Mac com Xcode, CocoaPods e o mesmo Flutter. Isso ainda 
 ```text
 apps/conectdroidcam/     App Flutter único (Android, iOS, Linux, macOS)
   lib/features/sender/     Emissor (celular): tela, estado, canal com o código nativo
-  lib/features/receiver/   Receptor (computador): hoje só uma tela provisória
-  android/.../sender/      Código nativo do emissor: câmera, codificador e servidor TCP (Kotlin)
+  lib/features/receiver/   Receptor (computador): tela, estado, plataforma sobre o Rust
+  lib/src/rust/            Ponte Flutter <-> Rust GERADA: não editar
+  android/.../sender/      Código nativo do emissor: câmera, codificador, servidor TCP, anúncio mDNS (Kotlin)
 rust/                    Workspace Rust
   crates/cdc-protocol/     Frames e mensagens do protocolo v1
+  crates/cdc-core/         Núcleo do receptor: descoberta, sessão, rotação, saída de vídeo
+  crates/cdc-ffi/          Ponte com o Flutter (vira libcdc_ffi.so)
   crates/cdc-testsender/   Celular simulado
-  crates/cdc-testreceiver/ Receptor de linha de comando (mede o fluxo, escreve em V4L2)
-scripts/spikes/          Scripts das validações da Fase 1
+  crates/cdc-testreceiver/ Receptor de linha de comando
+scripts/                 Validações da Fase 1, instalação da webcam virtual, gerador da ponte
 tools/branding/          Gerador dos ícones
 branding/                Logo original
 packaging/linux/         Ícones e .desktop para o empacotamento
@@ -71,13 +75,22 @@ flutter analyze
 flutter test
 ```
 
+Os testes em `apps/conectdroidcam/test/integration/` usam a **ponte de verdade** (carregam o `libcdc_ffi.so`, acham o emissor simulado por mDNS e recebem vídeo dele). Eles precisam do núcleo compilado e do `ffmpeg`, e **são pulados**, não falham, se faltar algo:
+
+```sh
+(cd rust && cargo build -p cdc-ffi -p cdc-testsender)
+flutter test test/integration
+```
+
+Não rodam no CI: dependem de multicast na rede. O teste de descoberta do `cdc-core` também só roda sob demanda: `cargo test -p cdc-core --test descoberta -- --ignored`.
+
 O teste de ponta a ponta do Rust sobe o `ffmpeg` de verdade e leva alguns segundos; se o `ffmpeg` não existir, ele é pulado e avisa.
 
 ## Rodar o app
 
 ```sh
 cd apps/conectdroidcam
-flutter run -d linux            # o app do computador (tela provisória)
+flutter run -d linux            # o app do computador (compila o Rust junto; precisa do cargo)
 flutter devices                 # lista os aparelhos
 flutter run -d <id>             # no celular, com hot reload
 ```
@@ -94,6 +107,13 @@ cargo run -p cdc-testsender -- --profile fullhd --seconds 10      # um terminal
 cargo run -p cdc-testreceiver -- 127.0.0.1:47821 --seconds 10     # outro
 ```
 
+Para simular um **celular em pé** e vê-lo aparecer sozinho na lista do app do computador:
+
+```sh
+cargo run -p cdc-testsender -- --bind 0.0.0.0 --rotation 90 --advertise "Celular de teste" --seconds 120
+# --rotate-after 5:0  gira o celular para a posição normal depois de 5 s
+```
+
 **Com o celular**: abra o app, escolha a resolução e toque em "Iniciar transmissão". A tela mostra o endereço (por exemplo `192.168.0.7:47821`):
 
 ```sh
@@ -101,7 +121,7 @@ cd rust
 cargo run -p cdc-testreceiver -- 192.168.0.7:47821 --seconds 20
 ```
 
-O receptor imprime a resolução real, os FPS, o bitrate e o maior intervalo entre frames. Para escrever o vídeo num dispositivo de webcam virtual e ler de volta a prova do que saiu:
+O receptor imprime a resolução real, a rotação, os FPS, o bitrate, o atraso da rede e o maior intervalo entre frames. `--canvas vertical` escolhe o formato vertical da saída. Para escrever o vídeo num dispositivo de webcam virtual e ler de volta a prova do que saiu:
 
 ```sh
 scripts/spikes/s1-android.sh 192.168.0.7:47821 /dev/video0 16
@@ -159,6 +179,37 @@ Problemas que já custaram tempo. Vale conhecê-los antes de repetir.
 - No Riverpod 3, `ref.read` dentro de `onDispose` é proibido: guarde o que precisar antes.
 - Um `ListView` só constrói o que está à vista. Num teste de widget com a tela padrão (800×600), itens abaixo da dobra não são encontrados; use uma tela alta, como a de um celular.
 - `debugDefaultTargetPlatformOverride` precisa ser restaurado dentro do teste; use `variant: TargetPlatformVariant.only(...)`.
+
+**Ponte Flutter ↔ Rust**
+
+- Uma função com `StreamSink` **nunca deve devolver `Err`**: a ponte entrega o erro num `Future` interno que ninguém escuta, e ele vira uma exceção solta em vez de chegar ao `Stream`. Mande o erro como evento no próprio fluxo (foi o que o teste com a ponte real revelou).
+- `StreamSink<T>::clone` exige `T: Clone`.
+- Sem `lints.workspace` no `cdc-ffi`: o código gerado usa `unsafe`, que o resto do projeto proíbe.
+- Eventos com campos opcionais são estruturas planas de propósito: enums com dados fariam o gerador exigir `freezed` e `build_runner`.
+- Depois de mexer em `api.rs`, rode `scripts/gerar-ponte.sh` e versione o que ele gerar.
+- `Shell: Fail to post message to Dart` no fim de um teste é inofensivo: uma thread do Rust enviou algo depois de o Dart fechar o fluxo.
+
+**Webcam virtual (v4l2loopback)**
+
+- Com o OBS segurando o dispositivo, o `ffmpeg` escritor **não dá erro** ao escrever um quadro de outro tamanho, mas o dispositivo **continua no tamanho antigo**. Trocar o formato ou a resolução exige que o OBS reabra a fonte. O app avisa na tela, e `docs/usar-com-obs.md` explica.
+- **O OBS nunca solta a webcam que abriu** (medido: antes, durante e 20 s depois da sessão), então com um só dispositivo é impossível mudar de tamanho ou de formato sem ele reabrir a fonte. A solução é **um dispositivo por tamanho e formato** (`scripts/setup/linux-webcam-virtual.sh` cria seis: `/dev/video10` a `15`), cada um com tamanho que nunca muda; o núcleo escolhe o dispositivo pelo par resolvido (`SessionOptions::shape_devices`). O nome da câmera tem no máximo 31 caracteres (limite do `v4l2loopback`), por isso "FHD".
+- Por isso o tamanho da saída é **fixo** (`OutputSize`, padrão 1920×1080) e **não acompanha a resolução do celular**: quando acompanhava, trocar o celular de Full HD para HD mudava o quadro de 1920×1080 para 1280×720 e o OBS mostrava a imagem embaralhada (foi o que o usuário viu).
+- Por isso o formato **Automático** é resolvido uma vez, na primeira informação de perfil da sessão, e não muda quando o celular gira no meio dela.
+- Um leitor (`ffmpeg -f v4l2`) não consegue abrir o dispositivo enquanto o OBS o segura (`Device or resource busy`): para ver o que o OBS recebe, use a prévia do app ou o `cdc-testreceiver --preview ARQUIVO.jpg`.
+
+**Depuração do app do Linux**
+
+- A saída do app redirecionada para arquivo fica em buffer pelo motor do Flutter (inclusive com `stdbuf`), então logs não servem para medir tempo. Grave num arquivo com `flush` e carimbo de hora.
+- O XTEST (cliques simulados) não chega aos apps Flutter em XWayland. Para ver a janela, abra com `GDK_BACKEND=x11` e capture com `import -window <id>` (ImageMagick), achando o id pela lista `_NET_CLIENT_LIST` do `xprop`. O ambiente do desenvolvedor usa Wayland nativo (`GDK_BACKEND=wayland`), onde essa captura não funciona.
+- O Xiaomi bloqueia toques injetados pelo `adb input tap` sem a opção "Depuração USB (configurações de segurança)".
+
+**mDNS**
+
+- O Android em economia de energia do Wi-Fi filtra multicast e o celular pode demorar mais de 15 s a responder às consultas do computador (o app sozinho achou o celular em ~0,5 s em 3 de 3 execuções, e em ~16 s numa quarta). O emissor segura um `MulticastLock` enquanto transmite, e o computador procura de novo a cada 8 s com a lista vazia. **A eficácia do `MulticastLock` ainda não foi medida no celular.**
+
+- O `mdns-sd` entrega o serviço como resolvido **antes** de resolver o endereço IPv4. Listar o celular nesse momento mostra um endereço que não conecta; o núcleo só informa celulares que já têm IPv4 (o evento completo vem logo depois).
+- Um emissor que anuncia todas as interfaces (como o simulado, neste PC, com as pontes do Docker) aparece com o menor endereço IPv4. Um celular anuncia só o do Wi-Fi.
+- O `--bind` padrão do `cdc-testsender` é o loopback; para ser alcançado pelo endereço anunciado, use `--bind 0.0.0.0`.
 
 **Rede**
 
