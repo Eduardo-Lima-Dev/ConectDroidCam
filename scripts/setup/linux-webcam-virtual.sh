@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
-# Cria a webcam virtual dedicada do ConectDroidCam: /dev/video10, "ConectDroidCam".
+# Cria as webcams virtuais do ConectDroidCam: uma por tamanho e formato.
 #
-# Precisa de root, porque configura o módulo `v4l2loopback` do kernel.
+# Por que várias: o OBS nunca fecha uma webcam que abriu, e a webcam não muda de tamanho com
+# ele aberto. Se houvesse uma só, trocar de tamanho, formato ou posição do celular deixaria a
+# imagem embaralhada até reabrir a fonte no OBS. Com uma por tamanho e formato, nenhuma muda de
+# tamanho nunca, e o app escolhe sozinho a certa.
 #
-# Como é feito, sem mexer no que você já tem:
-#   - Escreve /etc/modprobe.d/conectdroidcam.conf, um arquivo novo.
-#   - Pede dois dispositivos ao módulo: o /dev/video10 (do ConectDroidCam, com o nome certo e
-#     `exclusive_caps=1`, que navegadores e Zoom exigem para listar a câmera) e o /dev/video0,
-#     que continua como estava (sem nome nem exclusive_caps).
-#   - O módulo `v4l2loopback_dc` (do Droidcam) é outro e não é tocado.
-#   - Recarrega o módulo só se ninguém estiver usando uma câmera virtual.
+#   /dev/video10  ConectDroidCam FHD Horizontal  1920x1080
+#   /dev/video11  ConectDroidCam FHD Vertical   1080x1920
+#   /dev/video12  ConectDroidCam HD Horizontal   1280x720
+#   /dev/video13  ConectDroidCam HD Vertical     720x1280
+#   /dev/video14  ConectDroidCam 2K Horizontal   2560x1440
+#   /dev/video15  ConectDroidCam 2K Vertical     1440x2560
+#   /dev/video0   dispositivo genérico, como antes (sem nome nem exclusive_caps)
+#
+# (O nome da câmera tem no máximo 31 caracteres, por isso "FHD".)
+#
+# Precisa de root, porque configura o módulo `v4l2loopback` do kernel. Sem mexer no que você já
+# tem: escreve um arquivo novo em /etc/modprobe.d, não toca no módulo `v4l2loopback_dc` do
+# Droidcam, e só recarrega o módulo se ninguém o estiver usando (feche o OBS antes).
 #
 # Uso:
 #   sudo scripts/setup/linux-webcam-virtual.sh              cria e ativa
@@ -19,7 +28,6 @@ set -euo pipefail
 
 CONF=/etc/modprobe.d/conectdroidcam.conf
 NUMERO=10
-NOME="ConectDroidCam"
 MODO="aplicar"
 case "${1:-}" in
   --remover) MODO="remover" ;;
@@ -28,10 +36,10 @@ case "${1:-}" in
   *) echo "argumento desconhecido: $1 (use --remover ou --simular)" >&2; exit 2 ;;
 esac
 
-CONTEUDO="# ConectDroidCam: webcam virtual dedicada (criado por scripts/setup/linux-webcam-virtual.sh).
-# Primeiro dispositivo: /dev/video${NUMERO}, do ConectDroidCam.
-# Segundo dispositivo: /dev/video0, que segue com o comportamento padrão de antes.
-options v4l2loopback devices=2 video_nr=${NUMERO},0 card_label=\"${NOME}\" exclusive_caps=1,0
+NOMES="ConectDroidCam FHD Horizontal,ConectDroidCam FHD Vertical,ConectDroidCam HD Horizontal,ConectDroidCam HD Vertical,ConectDroidCam 2K Horizontal,ConectDroidCam 2K Vertical"
+CONTEUDO="# ConectDroidCam: uma webcam virtual por tamanho e formato (criado por scripts/setup/linux-webcam-virtual.sh).
+# /dev/video10 a /dev/video15: as do ConectDroidCam. /dev/video0: genérico, como antes.
+options v4l2loopback devices=7 video_nr=10,11,12,13,14,15,0 card_label=\"${NOMES}\" exclusive_caps=1,1,1,1,1,1,0
 "
 
 acao() { if [ "$MODO" = "simular" ]; then echo "   [simulação] $*"; else "$@"; fi; }
@@ -93,17 +101,19 @@ echo "== recarregando o módulo"
 recarregar
 
 if [ "$MODO" = "simular" ]; then
-  echo "== (simulação) depois disso, /dev/video${NUMERO} apareceria com o nome \"${NOME}\""
+  echo "== (simulação) depois disso, /dev/video10 a /dev/video15 apareceriam com os nomes acima"
   exit 0
 fi
 
 echo "== conferindo"
-for _ in 1 2 3 4 5; do [ -e "/dev/video${NUMERO}" ] && break; sleep 1; done
-if [ ! -e "/dev/video${NUMERO}" ]; then
-  echo "FALHA: /dev/video${NUMERO} não apareceu. Veja: dmesg | tail" >&2
-  exit 1
-fi
-v4l2-ctl -d "/dev/video${NUMERO}" --info 2>/dev/null | grep -E 'Driver name|Card type' | sed 's/^/   /' || true
+for _ in 1 2 3 4 5; do [ -e "/dev/video15" ] && break; sleep 1; done
+for n in 10 11 12 13 14 15; do
+  if [ ! -e "/dev/video${n}" ]; then
+    echo "FALHA: /dev/video${n} não apareceu. Veja: dmesg | tail" >&2
+    exit 1
+  fi
+  printf '   /dev/video%s  %s\n' "$n" "$(v4l2-ctl -d "/dev/video${n}" --info 2>/dev/null | awk -F': ' '/Card type/{print $2}')"
+done
 echo
-echo "Pronto: /dev/video${NUMERO} (\"${NOME}\"). Para conferir se navegadores e o OBS vão enxergá-lo:"
-echo "   scripts/spikes/verificar-webcam.sh /dev/video${NUMERO}"
+echo "Pronto. Para conferir se navegadores e o OBS vão enxergar um deles:"
+echo "   scripts/spikes/verificar-webcam.sh /dev/video10"
