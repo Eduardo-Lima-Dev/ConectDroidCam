@@ -1,5 +1,6 @@
 //! Uso: cdc-testreceiver HOST:PORTA [--seconds N] [--v4l2 /dev/videoN] [--dump arquivo.h264]
 //!                       [--canvas auto|horizontal|vertical] [--size hd|fullhd|qhd] [--preview ARQUIVO.jpg] [--quiet]
+//!                       [--identity ARQUIVO] [--pin IMPRESSAO] [--auto-confirm]
 //!                       [--do SEGUNDOS:COMANDO]...   (comandos ao celular: start:1280x720@30, stop, fps:24, camera:front|back|toggle)
 //!        cdc-testreceiver --discover [SEGUNDOS]   (lista os celulares achados na rede)
 //!
@@ -12,8 +13,8 @@ use std::thread;
 use std::time::Duration;
 
 use cdc_core::{
-    Canvas, DeviceEvent, Discovery, OutputSize, SessionEvent, SessionOptions, StopHandle, connect,
-    run,
+    Canvas, DeviceEvent, Discovery, Identity, OutputSize, SessionEvent, SessionOptions, StopHandle,
+    connect_secure_phone, run,
 };
 
 /// Converte `start:1280x720@30`, `stop`, `fps:24` ou `camera:front` numa mensagem.
@@ -93,6 +94,12 @@ fn main() -> ExitCode {
     let mut verbose = true;
     let mut preview_file: Option<String> = None;
     let mut script: Vec<(u64, cdc_protocol::Message)> = Vec::new();
+    let mut identity_file = std::env::temp_dir()
+        .join("cdc-testreceiver-identidade")
+        .to_string_lossy()
+        .into_owned();
+    let mut pin: Option<String> = None;
+    let mut auto_confirm = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = |name: &str| args.next().ok_or(format!("{name} precisa de um valor"));
@@ -138,6 +145,12 @@ fn main() -> ExitCode {
                 options.preview = true;
                 preview_file = Some(v);
             }),
+            "--identity" => value("--identity").map(|v| identity_file = v),
+            "--pin" => value("--pin").map(|v| pin = Some(v)),
+            "--auto-confirm" => {
+                auto_confirm = true;
+                Ok(())
+            }
             "--do" => value("--do").and_then(|v| {
                 let (quando, comando) = v.split_once(':').ok_or("use SEGUNDOS:COMANDO")?;
                 let quando = quando
@@ -167,14 +180,27 @@ fn main() -> ExitCode {
     };
 
     eprintln!("conectando a {address}...");
-    let stream = match connect(&address, Duration::from_secs(5)) {
-        Ok(s) => s,
+    let identity = match Identity::load_or_create(std::path::Path::new(&identity_file)) {
+        Ok(i) => i,
         Err(e) => {
-            eprintln!("erro: {e}");
+            eprintln!("erro na identidade: {e}");
             return ExitCode::FAILURE;
         }
     };
+    let link =
+        match connect_secure_phone(&address, Duration::from_secs(5), &identity, pin.as_deref()) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("erro: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+    options.own_fingerprint = identity.fingerprint();
+    options.phone_fingerprint = link.peer_fingerprint.clone();
+    eprintln!("certificado do celular: {}", link.peer_fingerprint);
+    let stream = link.stream;
     let stop = StopHandle::new();
+    let stop_for_events = stop.clone();
     if !script.is_empty() {
         let stop = stop.clone();
         thread::spawn(move || {
@@ -236,6 +262,16 @@ fn main() -> ExitCode {
                 disponiveis.join(", ")
             );
         }
+        SessionEvent::PairingCode { code, .. } => {
+            eprintln!("PAREAMENTO: o código é {code}. Confira com o do celular.");
+            if auto_confirm {
+                let _ = stop_for_events.confirm_pairing(true);
+            }
+        }
+        SessionEvent::Paired { phone_fingerprint } => {
+            eprintln!("pareado. Use --pin {phone_fingerprint} nas próximas vezes");
+        }
+        SessionEvent::PairingDenied { reason } => eprintln!("pareamento negado: {reason}"),
         SessionEvent::Notice(texto) => eprintln!("aviso: {texto}"),
         SessionEvent::SenderError { code, message } => {
             eprintln!("erro do emissor: {code}: {message}");

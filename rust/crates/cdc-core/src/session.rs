@@ -9,7 +9,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use cdc_protocol::{CapabilityMode, Facing, Frame, FrameType, Message, Platform, ProtocolError};
+use cdc_protocol::{
+    CapabilityMode, ErrorCode, Facing, Frame, FrameType, Message, Platform, ProtocolError,
+};
+use cdc_security::{Identity, SecError, SecureLink, connect_secure, new_nonce, pairing_code};
 use thiserror::Error;
 
 use crate::filter::{Canvas, OutputSize, canvas_size, normalize_rotation, video_filter};
@@ -29,6 +32,22 @@ pub enum SessionError {
     Protocol(#[from] ProtocolError),
     #[error(transparent)]
     Io(#[from] io::Error),
+    #[error("{0}")]
+    Security(String),
+}
+
+impl From<SecError> for SessionError {
+    fn from(e: SecError) -> Self {
+        Self::Security(match e {
+            SecError::FingerprintMismatch { .. } => {
+                "O certificado deste celular mudou desde o pareamento. Pode ser outro aparelho \
+                 fingindo ser ele. Remova o pareamento e pareie de novo se foi você quem \
+                 reinstalou o app."
+                    .to_string()
+            }
+            outro => outro.to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +65,10 @@ pub struct SessionOptions {
     pub shape_devices: Vec<ShapeDevice>,
     /// Nome deste computador, mostrado no celular.
     pub device_name: String,
+    /// Impressão digital do certificado deste computador (vazia sem TLS, como nos testes).
+    pub own_fingerprint: String,
+    /// Impressão digital do certificado do celular, vista no handshake do TLS.
+    pub phone_fingerprint: String,
     /// Gera quadros JPEG pequenos para uma prévia na tela ([`SessionEvent::Preview`]).
     pub preview: bool,
 }
@@ -60,6 +83,8 @@ impl Default for SessionOptions {
             output_size: OutputSize::default(),
             shape_devices: Vec::new(),
             device_name: "computador".into(),
+            own_fingerprint: String::new(),
+            phone_fingerprint: String::new(),
             preview: false,
         }
     }
@@ -124,6 +149,20 @@ pub enum SessionEvent {
         can_switch: bool,
         streaming: bool,
     },
+    /// O celular não conhece este computador e o pareamento começou: este código precisa ser
+    /// igual ao que o celular mostra. Confirme com [`StopHandle::confirm_pairing`].
+    PairingCode {
+        code: String,
+        phone_fingerprint: String,
+    },
+    /// Os dois lados confirmaram: guarde a impressão digital do celular.
+    Paired {
+        phone_fingerprint: String,
+    },
+    /// O pareamento não aconteceu (recusado, expirado ou celular não aceitou).
+    PairingDenied {
+        reason: String,
+    },
     /// O emissor reportou um erro.
     SenderError {
         code: String,
@@ -145,6 +184,8 @@ struct StopInner {
     /// Conexão com o celular. Todas as escritas passam por aqui, com o `Mutex` seguro, para
     /// que um comando de outra thread nunca se misture no meio de um frame da sessão.
     stream: Mutex<Option<TcpStream>>,
+    /// Nonce do pareamento em andamento, para a confirmação do usuário.
+    pairing_nonce: Mutex<Option<String>>,
 }
 
 impl StopHandle {
@@ -176,6 +217,27 @@ impl StopHandle {
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "sem sessão ativa"))?;
         frame.write_to(stream)?;
         Ok(())
+    }
+
+    /// O usuário confirmou (ou recusou) o código de pareamento mostrado neste computador.
+    pub fn confirm_pairing(&self, accept: bool) -> Result<(), SessionError> {
+        let nonce = self
+            .inner
+            .pairing_nonce
+            .lock()
+            .map_err(|_| io::Error::other("estado interno corrompido"))?
+            .clone()
+            .ok_or_else(|| SessionError::Security("não há pareamento em andamento".into()))?;
+        self.send(&Message::PairConfirm {
+            nonce,
+            confirmed: accept,
+        })
+    }
+
+    fn set_pairing_nonce(&self, nonce: Option<String>) {
+        if let Ok(mut guard) = self.inner.pairing_nonce.lock() {
+            *guard = nonce;
+        }
     }
 
     pub fn is_stopped(&self) -> bool {
@@ -213,6 +275,19 @@ pub fn connect(address: &str, timeout: Duration) -> Result<TcpStream, SessionErr
         address: address.to_string(),
         source: ultimo.unwrap_or_else(|| io::Error::other("sem endereços")),
     })
+}
+
+/// Abre a conexão com o celular e o TLS por cima. `pinned` é a impressão digital registrada
+/// do celular; `None` só quando ele ainda não foi pareado. Devolve a conexão em texto claro
+/// (já decifrada) e a impressão digital que o celular apresentou.
+pub fn connect_secure_phone(
+    address: &str,
+    timeout: Duration,
+    identity: &Identity,
+    pinned: Option<&str>,
+) -> Result<SecureLink, SessionError> {
+    let tcp = connect(address, timeout)?;
+    Ok(connect_secure(tcp, identity, pinned)?)
 }
 
 fn is_disconnect(error: &io::Error) -> bool {
@@ -282,6 +357,8 @@ pub fn run(
     stop.send(&Message::KeyframeRequest)?;
 
     let started = Instant::now();
+    // Código do pareamento em andamento, se houver.
+    let mut pairing: Option<String> = None;
     let mut report = Report::default();
     let mut lag = LagTracker::default();
     let mut config: Option<Vec<u8>> = None;
@@ -369,6 +446,49 @@ pub fn run(
                             can_switch,
                             streaming,
                         });
+                    }
+                    // O celular não conhece este computador: começa o pareamento.
+                    Message::Error {
+                        code: ErrorCode::AuthFailed,
+                        ..
+                    } if pairing.is_none()
+                        && !options.phone_fingerprint.is_empty()
+                        && !options.own_fingerprint.is_empty() =>
+                    {
+                        let nonce = new_nonce()?;
+                        let code = pairing_code(
+                            &options.phone_fingerprint,
+                            &options.own_fingerprint,
+                            &nonce,
+                        );
+                        stop.set_pairing_nonce(Some(nonce.clone()));
+                        stop.send(&Message::PairRequest { nonce })?;
+                        pairing = Some(code.clone());
+                        on_event(SessionEvent::PairingCode {
+                            code,
+                            phone_fingerprint: options.phone_fingerprint.clone(),
+                        });
+                    }
+                    Message::PairConfirm { confirmed, .. } if pairing.is_some() => {
+                        pairing = None;
+                        stop.set_pairing_nonce(None);
+                        if confirmed {
+                            on_event(SessionEvent::Paired {
+                                phone_fingerprint: options.phone_fingerprint.clone(),
+                            });
+                            // Agora o celular obedece: pede o que antes ele ignorou.
+                            stop.send(&Message::ProfileQuery)?;
+                            stop.send(&Message::KeyframeRequest)?;
+                        } else {
+                            on_event(SessionEvent::PairingDenied {
+                                reason: "O celular recusou o pareamento.".into(),
+                            });
+                            return Ok(());
+                        }
+                    }
+                    Message::PairDenied { reason } => {
+                        on_event(SessionEvent::PairingDenied { reason });
+                        return Ok(());
                     }
                     Message::Error { code, message } => on_event(SessionEvent::SenderError {
                         code: format!("{code:?}"),

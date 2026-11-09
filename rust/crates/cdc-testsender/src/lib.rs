@@ -544,3 +544,109 @@ pub fn serve_controllable(stream: TcpStream, options: &Options) -> Result<(), Se
     let _ = phone.stop();
     resultado
 }
+
+// --- Segurança: TLS e pareamento como o celular faz --------------------------------------
+
+/// Como o celular simulado trata computadores: TLS com identidade própria e pareamento.
+#[derive(Clone)]
+pub struct PhoneAuth {
+    pub identity: cdc_security::Identity,
+    /// Impressões digitais dos computadores pareados.
+    pub paired: Arc<Mutex<Vec<String>>>,
+    /// Chamada com o código de 6 dígitos quando um computador novo pede pareamento; devolve
+    /// se o "usuário do celular" confirma.
+    pub confirm: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+}
+
+impl PhoneAuth {
+    pub fn new(
+        identity: cdc_security::Identity,
+        confirm: impl Fn(&str) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            identity,
+            paired: Arc::default(),
+            confirm: Arc::new(confirm),
+        }
+    }
+}
+
+/// Aceita o TLS e garante que o computador está pareado, pareando-o se for novo. Devolve a
+/// conexão em texto claro, pronta para `serve_connection` ou `serve_controllable`, ou `None`
+/// se o pareamento não aconteceu.
+pub fn accept_client(tcp: TcpStream, auth: &PhoneAuth) -> Result<Option<TcpStream>, SenderError> {
+    let link = cdc_security::accept_secure(tcp, &auth.identity)
+        .map_err(|e| SenderError::Io(io::Error::other(e.to_string())))?;
+    let peer = link.peer_fingerprint.clone();
+    let mut stream = link.stream;
+    let known = auth
+        .paired
+        .lock()
+        .map(|p| p.contains(&peer))
+        .unwrap_or(false);
+    if known {
+        return Ok(Some(stream));
+    }
+
+    let write = |stream: &mut TcpStream, m: &Message| -> Result<(), SenderError> {
+        m.to_frame(0)?.write_to(stream)?;
+        stream.flush()?;
+        Ok(())
+    };
+    write(
+        &mut stream,
+        &Message::Error {
+            code: ErrorCode::AuthFailed,
+            message: "pareamento necessário".into(),
+        },
+    )?;
+    // Espera o pedido de pareamento, ignorando o que mais o computador mandar.
+    let nonce = loop {
+        match Frame::read_from(&mut stream)? {
+            None => return Ok(None),
+            Some(f) if f.kind == FrameType::Control => {
+                if let Ok(Message::PairRequest { nonce }) = Message::from_frame(&f) {
+                    break nonce;
+                }
+            }
+            Some(_) => {}
+        }
+    };
+    let code = cdc_security::pairing_code(&auth.identity.fingerprint(), &peer, &nonce);
+    let accepted = (auth.confirm)(&code);
+    if !accepted {
+        write(
+            &mut stream,
+            &Message::PairDenied {
+                reason: "recusado no celular".into(),
+            },
+        )?;
+        return Ok(None);
+    }
+    // Falta a confirmação do computador.
+    loop {
+        match Frame::read_from(&mut stream)? {
+            None => return Ok(None),
+            Some(f) if f.kind == FrameType::Control => {
+                if let Ok(Message::PairConfirm { confirmed, .. }) = Message::from_frame(&f) {
+                    if !confirmed {
+                        return Ok(None);
+                    }
+                    break;
+                }
+            }
+            Some(_) => {}
+        }
+    }
+    if let Ok(mut paired) = auth.paired.lock() {
+        paired.push(peer);
+    }
+    write(
+        &mut stream,
+        &Message::PairConfirm {
+            nonce,
+            confirmed: true,
+        },
+    )?;
+    Ok(Some(stream))
+}

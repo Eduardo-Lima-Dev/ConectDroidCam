@@ -119,6 +119,13 @@ pub enum ReceiverEventKind {
     /// O que o celular sabe fazer e seu estado: `modes`, `fps_options`, `streaming`,
     /// `front` e `can_switch`.
     Capabilities,
+    /// O celular pediu pareamento: `text` = código de 6 dígitos que ele também mostra,
+    /// `text2` = impressão digital do celular.
+    PairingCode,
+    /// Pareamento concluído: `text` = impressão digital do celular, para guardar.
+    Paired,
+    /// Pareamento recusado ou não concluído: `text` = motivo.
+    PairingDenied,
     /// O celular reportou um erro: `text` = código, `text2` = mensagem.
     SenderError,
     /// Aviso que não interrompe: `text`.
@@ -264,6 +271,22 @@ impl From<SessionEvent> for ReceiverEvent {
                 streaming,
                 ..Self::new(ReceiverEventKind::Capabilities)
             },
+            SessionEvent::PairingCode {
+                code,
+                phone_fingerprint,
+            } => Self {
+                text: code,
+                text2: phone_fingerprint,
+                ..Self::new(ReceiverEventKind::PairingCode)
+            },
+            SessionEvent::Paired { phone_fingerprint } => Self {
+                text: phone_fingerprint,
+                ..Self::new(ReceiverEventKind::Paired)
+            },
+            SessionEvent::PairingDenied { reason } => Self {
+                text: reason,
+                ..Self::new(ReceiverEventKind::PairingDenied)
+            },
             SessionEvent::SenderError { code, message } => Self {
                 text: code,
                 text2: message,
@@ -327,6 +350,7 @@ static SESSION: Mutex<Option<StopHandle>> = Mutex::new(None);
 /// Conecta a um celular e entrega o vídeo à webcam virtual `v4l2_device` (sem ela, só mede).
 /// Os eventos chegam em `events` até a sessão terminar, e o último é sempre `Ended` ou
 /// `Failed`: inclusive quando a conexão nem abre ou já há uma sessão.
+#[allow(clippy::too_many_arguments)]
 pub fn connect_phone(
     address: String,
     v4l2_device: Option<String>,
@@ -334,6 +358,7 @@ pub fn connect_phone(
     size: OutputSize,
     shape_devices: Vec<ShapeDevice>,
     preview: bool,
+    pinned_fingerprint: Option<String>,
     events: StreamSink<ReceiverEvent>,
 ) {
     let fail = |text: String| {
@@ -352,13 +377,26 @@ pub fn connect_phone(
         }
         Err(_) => return fail("estado interno corrompido".into()),
     }
-    let stream = match cdc_core::connect(&address, Duration::from_secs(5)) {
-        Ok(s) => s,
+    let identity = match load_identity() {
+        Ok(i) => i,
+        Err(e) => {
+            clear_session(&stop);
+            return fail(e);
+        }
+    };
+    let link = match cdc_core::connect_secure_phone(
+        &address,
+        Duration::from_secs(5),
+        &identity,
+        pinned_fingerprint.as_deref(),
+    ) {
+        Ok(l) => l,
         Err(e) => {
             clear_session(&stop);
             return fail(e.to_string());
         }
     };
+    let stream = link.stream;
     let options = SessionOptions {
         sink: Sink {
             v4l2: v4l2_device,
@@ -379,6 +417,8 @@ pub fn connect_phone(
             })
             .collect(),
         device_name: computer_name(),
+        own_fingerprint: identity.fingerprint(),
+        phone_fingerprint: link.peer_fingerprint,
         preview,
         ..SessionOptions::default()
     };
@@ -396,6 +436,17 @@ pub fn connect_phone(
         let _ = events.add(final_event);
         clear_session(&stop);
     });
+}
+
+/// Identidade (certificado) deste computador, criada na primeira vez e guardada em
+/// `$XDG_CONFIG_HOME/conectdroidcam/identidade` (ou `~/.config/...`).
+fn load_identity() -> Result<cdc_core::Identity, String> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".config")))
+        .unwrap_or_else(std::env::temp_dir);
+    cdc_core::Identity::load_or_create(&base.join("conectdroidcam").join("identidade"))
+        .map_err(|e| e.to_string())
 }
 
 fn clear_session(stop: &StopHandle) {
@@ -419,6 +470,17 @@ fn command(message: Message) -> Option<String> {
     let guard = SESSION.lock().ok()?;
     match guard.as_ref() {
         Some(stop) if !stop.is_stopped() => stop.send(&message).err().map(|e| e.to_string()),
+        _ => Some("não há conexão com o celular".into()),
+    }
+}
+
+/// O usuário confirmou (ou recusou) o código de pareamento mostrado na tela.
+pub fn confirm_pairing(accept: bool) -> Option<String> {
+    let guard = SESSION.lock().ok()?;
+    match guard.as_ref() {
+        Some(stop) if !stop.is_stopped() => {
+            stop.confirm_pairing(accept).err().map(|e| e.to_string())
+        }
         _ => Some("não há conexão com o celular".into()),
     }
 }

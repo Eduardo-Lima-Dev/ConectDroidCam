@@ -1,12 +1,12 @@
 //! Uso: cdc-testsender [--bind 127.0.0.1] [--port 47821] [--profile hd|fullhd|qhd] [--seconds 10]
 //!                     [--rotation 0|90|180|270] [--rotate-after SEGUNDOS:ROTACAO]
-//!                     [--advertise NOME] [--controllable]
+//!                     [--advertise NOME] [--controllable] [--identity ARQUIVO] [--auto-pair]
 
 use std::net::TcpListener;
 use std::process::ExitCode;
 
 use cdc_protocol::VideoProfile;
-use cdc_testsender::{Options, serve_connection, serve_controllable};
+use cdc_testsender::{Options, PhoneAuth, accept_client, serve_connection, serve_controllable};
 
 struct Args {
     bind: String,
@@ -17,6 +17,8 @@ struct Args {
     rotate_after: Option<(u32, u32)>,
     advertise: Option<String>,
     controllable: bool,
+    identity: String,
+    auto_pair: bool,
 }
 
 /// Registra o serviço mDNS e devolve o daemon, que precisa continuar vivo para ele existir.
@@ -55,6 +57,11 @@ fn parse_args() -> Result<Args, String> {
         rotate_after: None,
         advertise: None,
         controllable: false,
+        identity: std::env::temp_dir()
+            .join("cdc-testsender-identidade")
+            .to_string_lossy()
+            .into_owned(),
+        auto_pair: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
@@ -83,6 +90,8 @@ fn parse_args() -> Result<Args, String> {
                 args.rotate_after = Some((s, parse_rotation(r)?));
             }
             "--controllable" => args.controllable = true,
+            "--identity" => args.identity = value("--identity")?,
+            "--auto-pair" => args.auto_pair = true,
             "--advertise" => args.advertise = Some(value("--advertise")?),
             "--profile" => {
                 args.profile = match value("--profile")?.as_str() {
@@ -143,6 +152,36 @@ fn main() -> ExitCode {
         }
     };
     eprintln!("cliente conectado: {peer}");
+    let identity =
+        match cdc_security::Identity::load_or_create(std::path::Path::new(&args.identity)) {
+            Ok(i) => i,
+            Err(e) => {
+                eprintln!("erro na identidade: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+    let auto_pair = args.auto_pair;
+    let auth = PhoneAuth::new(identity, move |code| {
+        eprintln!("PAREAMENTO: o código é {code}");
+        if auto_pair {
+            return true;
+        }
+        eprintln!("Confere com o do computador? [s/N]");
+        let mut resposta = String::new();
+        std::io::stdin().read_line(&mut resposta).is_ok()
+            && resposta.trim().eq_ignore_ascii_case("s")
+    });
+    let stream = match accept_client(stream, &auth) {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            eprintln!("pareamento não concluído");
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("erro no TLS: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let options = Options {
         rotation: args.rotation,
         rotate_after: args.rotate_after,

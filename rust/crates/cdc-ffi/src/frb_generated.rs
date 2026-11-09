@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 477192514;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1250170594;
 
 // Section: executor
 
@@ -79,6 +79,39 @@ fn wire__crate__api__computer_name_impl(
         },
     )
 }
+fn wire__crate__api__confirm_pairing_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "confirm_pairing",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_accept = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(crate::api::confirm_pairing(api_accept))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__connect_phone_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -107,6 +140,7 @@ fn wire__crate__api__connect_phone_impl(
             let api_size = <crate::api::OutputSize>::sse_decode(&mut deserializer);
             let api_shape_devices = <Vec<crate::api::ShapeDevice>>::sse_decode(&mut deserializer);
             let api_preview = <bool>::sse_decode(&mut deserializer);
+            let api_pinned_fingerprint = <Option<String>>::sse_decode(&mut deserializer);
             let api_events = <StreamSink<
                 crate::api::ReceiverEvent,
                 flutter_rust_bridge::for_generated::SseCodec,
@@ -122,6 +156,7 @@ fn wire__crate__api__connect_phone_impl(
                             api_size,
                             api_shape_devices,
                             api_preview,
+                            api_pinned_fingerprint,
                             api_events,
                         );
                     })?;
@@ -657,10 +692,13 @@ impl SseDecode for crate::api::ReceiverEventKind {
             3 => crate::api::ReceiverEventKind::Stats,
             4 => crate::api::ReceiverEventKind::Preview,
             5 => crate::api::ReceiverEventKind::Capabilities,
-            6 => crate::api::ReceiverEventKind::SenderError,
-            7 => crate::api::ReceiverEventKind::Notice,
-            8 => crate::api::ReceiverEventKind::Ended,
-            9 => crate::api::ReceiverEventKind::Failed,
+            6 => crate::api::ReceiverEventKind::PairingCode,
+            7 => crate::api::ReceiverEventKind::Paired,
+            8 => crate::api::ReceiverEventKind::PairingDenied,
+            9 => crate::api::ReceiverEventKind::SenderError,
+            10 => crate::api::ReceiverEventKind::Notice,
+            11 => crate::api::ReceiverEventKind::Ended,
+            12 => crate::api::ReceiverEventKind::Failed,
             _ => unreachable!("Invalid variant for ReceiverEventKind: {}", inner),
         };
     }
@@ -723,15 +761,16 @@ fn pde_ffi_dispatcher_primary_impl(
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
         1 => wire__crate__api__computer_name_impl(port, ptr, rust_vec_len, data_len),
-        2 => wire__crate__api__connect_phone_impl(port, ptr, rust_vec_len, data_len),
-        3 => wire__crate__api__disconnect_phone_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__ffmpeg_available_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__phone_set_fps_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__phone_start_stream_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__phone_stop_stream_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__phone_switch_camera_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__start_discovery_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__stop_discovery_impl(port, ptr, rust_vec_len, data_len),
+        2 => wire__crate__api__confirm_pairing_impl(port, ptr, rust_vec_len, data_len),
+        3 => wire__crate__api__connect_phone_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__disconnect_phone_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__ffmpeg_available_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__phone_set_fps_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__phone_start_stream_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__phone_stop_stream_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__phone_switch_camera_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__start_discovery_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__stop_discovery_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -868,10 +907,13 @@ impl flutter_rust_bridge::IntoDart for crate::api::ReceiverEventKind {
             Self::Stats => 3.into_dart(),
             Self::Preview => 4.into_dart(),
             Self::Capabilities => 5.into_dart(),
-            Self::SenderError => 6.into_dart(),
-            Self::Notice => 7.into_dart(),
-            Self::Ended => 8.into_dart(),
-            Self::Failed => 9.into_dart(),
+            Self::PairingCode => 6.into_dart(),
+            Self::Paired => 7.into_dart(),
+            Self::PairingDenied => 8.into_dart(),
+            Self::SenderError => 9.into_dart(),
+            Self::Notice => 10.into_dart(),
+            Self::Ended => 11.into_dart(),
+            Self::Failed => 12.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -1108,10 +1150,13 @@ impl SseEncode for crate::api::ReceiverEventKind {
                 crate::api::ReceiverEventKind::Stats => 3,
                 crate::api::ReceiverEventKind::Preview => 4,
                 crate::api::ReceiverEventKind::Capabilities => 5,
-                crate::api::ReceiverEventKind::SenderError => 6,
-                crate::api::ReceiverEventKind::Notice => 7,
-                crate::api::ReceiverEventKind::Ended => 8,
-                crate::api::ReceiverEventKind::Failed => 9,
+                crate::api::ReceiverEventKind::PairingCode => 6,
+                crate::api::ReceiverEventKind::Paired => 7,
+                crate::api::ReceiverEventKind::PairingDenied => 8,
+                crate::api::ReceiverEventKind::SenderError => 9,
+                crate::api::ReceiverEventKind::Notice => 10,
+                crate::api::ReceiverEventKind::Ended => 11,
+                crate::api::ReceiverEventKind::Failed => 12,
                 _ => {
                     unimplemented!("");
                 }

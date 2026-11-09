@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 cdc-core = { path = "../cdc-core" }
 cdc-protocol.workspace = true
+cdc-security = { path = "../cdc-security" }
 flutter_rust_bridge = "=2.13.0"
 
 # Sem `lints.workspace`: o código gerado pela ponte usa `unsafe`, que o resto do projeto proíbe.

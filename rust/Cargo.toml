@@ -4,6 +4,7 @@ members = [
     "crates/cdc-core",
     "crates/cdc-ffi",
     "crates/cdc-protocol",
+    "crates/cdc-security",
     "crates/cdc-testsender",
     "crates/cdc-testreceiver",
 ]
