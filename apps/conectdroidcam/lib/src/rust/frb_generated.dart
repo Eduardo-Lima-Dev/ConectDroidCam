@@ -64,7 +64,7 @@ class CdcCore extends BaseEntrypoint<CdcCoreApi, CdcCoreApiImpl, CdcCoreWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1185815827;
+  int get rustContentHash => 477192514;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -90,6 +90,18 @@ abstract class CdcCoreApi extends BaseApi {
   Future<void> crateApiDisconnectPhone();
 
   Future<bool> crateApiFfmpegAvailable();
+
+  Future<String?> crateApiPhoneSetFps({required int fps});
+
+  Future<String?> crateApiPhoneStartStream({
+    required int width,
+    required int height,
+    required int fps,
+  });
+
+  Future<String?> crateApiPhoneStopStream();
+
+  Future<String?> crateApiPhoneSwitchCamera({bool? front});
 
   Stream<PhoneInfo> crateApiStartDiscovery();
 
@@ -249,6 +261,127 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
       const TaskConstMeta(debugName: "ffmpeg_available", argNames: []);
 
   @override
+  Future<String?> crateApiPhoneSetFps({required int fps}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(fps, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPhoneSetFpsConstMeta,
+        argValues: [fps],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPhoneSetFpsConstMeta =>
+      const TaskConstMeta(debugName: "phone_set_fps", argNames: ["fps"]);
+
+  @override
+  Future<String?> crateApiPhoneStartStream({
+    required int width,
+    required int height,
+    required int fps,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(width, serializer);
+          sse_encode_u_32(height, serializer);
+          sse_encode_u_32(fps, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPhoneStartStreamConstMeta,
+        argValues: [width, height, fps],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPhoneStartStreamConstMeta => const TaskConstMeta(
+    debugName: "phone_start_stream",
+    argNames: ["width", "height", "fps"],
+  );
+
+  @override
+  Future<String?> crateApiPhoneStopStream() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPhoneStopStreamConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPhoneStopStreamConstMeta =>
+      const TaskConstMeta(debugName: "phone_stop_stream", argNames: []);
+
+  @override
+  Future<String?> crateApiPhoneSwitchCamera({bool? front}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_box_autoadd_bool(front, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPhoneSwitchCameraConstMeta,
+        argValues: [front],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPhoneSwitchCameraConstMeta => const TaskConstMeta(
+    debugName: "phone_switch_camera",
+    argNames: ["front"],
+  );
+
+  @override
   Stream<PhoneInfo> crateApiStartDiscovery() {
     final updates = RustStreamSink<PhoneInfo>();
     unawaited(
@@ -260,7 +393,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 5,
+              funcId: 9,
               port: port_,
             );
           },
@@ -289,7 +422,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 10,
             port: port_,
           );
         },
@@ -340,6 +473,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
   double dco_decode_f_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
@@ -349,6 +488,18 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   int dco_decode_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  List<PhoneMode> dco_decode_list_phone_mode(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_phone_mode).toList();
+  }
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Uint32List;
   }
 
   @protected
@@ -367,6 +518,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_bool(raw);
   }
 
   @protected
@@ -399,11 +556,26 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  PhoneMode dco_decode_phone_mode(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return PhoneMode(
+      width: dco_decode_u_32(arr[0]),
+      height: dco_decode_u_32(arr[1]),
+      available: dco_decode_bool(arr[2]),
+      maxFps: dco_decode_u_32(arr[3]),
+      reason: dco_decode_String(arr[4]),
+    );
+  }
+
+  @protected
   ReceiverEvent dco_decode_receiver_event(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 15)
-      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
+    if (arr.length != 20)
+      throw Exception('unexpected arr length: expect 20 but see ${arr.length}');
     return ReceiverEvent(
       kind: dco_decode_receiver_event_kind(arr[0]),
       text: dco_decode_String(arr[1]),
@@ -420,6 +592,11 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
       statsDelayMs: dco_decode_f_64(arr[12]),
       frames: dco_decode_u_64(arr[13]),
       preview: dco_decode_list_prim_u_8_strict(arr[14]),
+      modes: dco_decode_list_phone_mode(arr[15]),
+      fpsOptions: dco_decode_list_prim_u_32_strict(arr[16]),
+      streaming: dco_decode_bool(arr[17]),
+      front: dco_decode_bool(arr[18]),
+      canSwitch: dco_decode_bool(arr[19]),
     );
   }
 
@@ -509,6 +686,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_bool(deserializer));
+  }
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat64();
@@ -518,6 +701,25 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
+  }
+
+  @protected
+  List<PhoneMode> sse_decode_list_phone_mode(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PhoneMode>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_phone_mode(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
   }
 
   @protected
@@ -545,6 +747,17 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_String(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_bool(deserializer));
     } else {
       return null;
     }
@@ -586,6 +799,23 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  PhoneMode sse_decode_phone_mode(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_width = sse_decode_u_32(deserializer);
+    var var_height = sse_decode_u_32(deserializer);
+    var var_available = sse_decode_bool(deserializer);
+    var var_maxFps = sse_decode_u_32(deserializer);
+    var var_reason = sse_decode_String(deserializer);
+    return PhoneMode(
+      width: var_width,
+      height: var_height,
+      available: var_available,
+      maxFps: var_maxFps,
+      reason: var_reason,
+    );
+  }
+
+  @protected
   ReceiverEvent sse_decode_receiver_event(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_kind = sse_decode_receiver_event_kind(deserializer);
@@ -603,6 +833,11 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
     var var_statsDelayMs = sse_decode_f_64(deserializer);
     var var_frames = sse_decode_u_64(deserializer);
     var var_preview = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_modes = sse_decode_list_phone_mode(deserializer);
+    var var_fpsOptions = sse_decode_list_prim_u_32_strict(deserializer);
+    var var_streaming = sse_decode_bool(deserializer);
+    var var_front = sse_decode_bool(deserializer);
+    var var_canSwitch = sse_decode_bool(deserializer);
     return ReceiverEvent(
       kind: var_kind,
       text: var_text,
@@ -619,6 +854,11 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
       statsDelayMs: var_statsDelayMs,
       frames: var_frames,
       preview: var_preview,
+      modes: var_modes,
+      fpsOptions: var_fpsOptions,
+      streaming: var_streaming,
+      front: var_front,
+      canSwitch: var_canSwitch,
     );
   }
 
@@ -725,6 +965,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self, serializer);
+  }
+
+  @protected
   void sse_encode_f_64(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putFloat64(self);
@@ -734,6 +980,28 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
+  }
+
+  @protected
+  void sse_encode_list_phone_mode(
+    List<PhoneMode> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_phone_mode(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(self);
   }
 
   @protected
@@ -769,6 +1037,16 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_bool(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_output_format(OutputFormat self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
@@ -793,6 +1071,16 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  void sse_encode_phone_mode(PhoneMode self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.width, serializer);
+    sse_encode_u_32(self.height, serializer);
+    sse_encode_bool(self.available, serializer);
+    sse_encode_u_32(self.maxFps, serializer);
+    sse_encode_String(self.reason, serializer);
+  }
+
+  @protected
   void sse_encode_receiver_event(ReceiverEvent self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_receiver_event_kind(self.kind, serializer);
@@ -810,6 +1098,11 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
     sse_encode_f_64(self.statsDelayMs, serializer);
     sse_encode_u_64(self.frames, serializer);
     sse_encode_list_prim_u_8_strict(self.preview, serializer);
+    sse_encode_list_phone_mode(self.modes, serializer);
+    sse_encode_list_prim_u_32_strict(self.fpsOptions, serializer);
+    sse_encode_bool(self.streaming, serializer);
+    sse_encode_bool(self.front, serializer);
+    sse_encode_bool(self.canSwitch, serializer);
   }
 
   @protected

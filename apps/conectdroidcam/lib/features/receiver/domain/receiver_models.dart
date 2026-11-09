@@ -111,6 +111,61 @@ class LiveStats {
   final int frames;
 }
 
+/// Uma resolução que o celular oferece, ou não, com o motivo quando não oferece.
+class PhoneMode {
+  const PhoneMode({
+    required this.width,
+    required this.height,
+    required this.available,
+    this.maxFps = 30,
+    this.reason,
+  });
+
+  final int width;
+  final int height;
+  final bool available;
+  final int maxFps;
+  final String? reason;
+
+  String get label => '$width×$height';
+
+  @override
+  bool operator ==(Object other) =>
+      other is PhoneMode && other.width == width && other.height == height;
+
+  @override
+  int get hashCode => Object.hash(width, height);
+}
+
+/// O que o celular sabe fazer e em que estado está.
+class PhoneCapabilities {
+  const PhoneCapabilities({
+    required this.modes,
+    required this.fpsOptions,
+    required this.front,
+    required this.canSwitch,
+    required this.streaming,
+  });
+
+  final List<PhoneMode> modes;
+  final List<int> fpsOptions;
+
+  /// A câmera em uso é a frontal.
+  final bool front;
+  final bool canSwitch;
+
+  /// O celular está transmitindo vídeo agora.
+  final bool streaming;
+
+  PhoneMode? find(int width, int height) =>
+      modes.where((m) => m.width == width && m.height == height).firstOrNull;
+
+  /// Resoluções que o celular consegue entregar, da maior para a menor.
+  List<PhoneMode> get availableModes =>
+      modes.where((m) => m.available).toList()
+        ..sort((a, b) => (b.width * b.height).compareTo(a.width * a.height));
+}
+
 /// O que acontece durante uma conexão.
 sealed class ReceiverUpdate {
   const ReceiverUpdate();
@@ -121,6 +176,12 @@ class HelloUpdate extends ReceiverUpdate {
 
   final String deviceName;
   final String platform;
+}
+
+class CapabilitiesUpdate extends ReceiverUpdate {
+  const CapabilitiesUpdate(this.capabilities);
+
+  final PhoneCapabilities capabilities;
 }
 
 class ProfileUpdate extends ReceiverUpdate {

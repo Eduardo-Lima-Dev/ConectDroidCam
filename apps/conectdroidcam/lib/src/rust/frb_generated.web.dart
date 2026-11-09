@@ -38,10 +38,19 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw);
+
+  @protected
   double dco_decode_f_64(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
+
+  @protected
+  List<PhoneMode> dco_decode_list_phone_mode(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -53,6 +62,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+
+  @protected
   OutputFormat dco_decode_output_format(dynamic raw);
 
   @protected
@@ -60,6 +72,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   PhoneInfo dco_decode_phone_info(dynamic raw);
+
+  @protected
+  PhoneMode dco_decode_phone_mode(dynamic raw);
 
   @protected
   ReceiverEvent dco_decode_receiver_event(dynamic raw);
@@ -105,10 +120,19 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
   double sse_decode_f_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
+  List<PhoneMode> sse_decode_list_phone_mode(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -120,6 +144,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
   OutputFormat sse_decode_output_format(SseDeserializer deserializer);
 
   @protected
@@ -127,6 +154,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   PhoneInfo sse_decode_phone_info(SseDeserializer deserializer);
+
+  @protected
+  PhoneMode sse_decode_phone_mode(SseDeserializer deserializer);
 
   @protected
   ReceiverEvent sse_decode_receiver_event(SseDeserializer deserializer);
@@ -179,10 +209,25 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+
+  @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_phone_mode(
+    List<PhoneMode> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -200,6 +245,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_output_format(OutputFormat self, SseSerializer serializer);
 
   @protected
@@ -207,6 +255,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   void sse_encode_phone_info(PhoneInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_phone_mode(PhoneMode self, SseSerializer serializer);
 
   @protected
   void sse_encode_receiver_event(ReceiverEvent self, SseSerializer serializer);

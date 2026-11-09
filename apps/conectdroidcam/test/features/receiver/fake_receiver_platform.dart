@@ -82,6 +82,37 @@ class FakeReceiverPlatform implements ReceiverPlatform {
     send(const EndedUpdate());
   }
 
+  /// Comandos enviados ao celular, em ordem: `start 1920x1080@30`, `stop`, `fps 24`,
+  /// `camera front|back|toggle`.
+  final List<String> commands = [];
+
+  /// Se não for `null`, todo comando falha com este motivo.
+  String? commandError;
+
+  Future<String?> _command(String text) async {
+    commands.add(text);
+    return commandError;
+  }
+
+  @override
+  Future<String?> startStream(int width, int height, int fps) =>
+      _command('start ${width}x$height@$fps');
+
+  @override
+  Future<String?> stopStream() => _command('stop');
+
+  @override
+  Future<String?> setFps(int fps) => _command('fps $fps');
+
+  @override
+  Future<String?> switchCamera({bool? front}) => _command(
+    'camera ${front == null
+        ? 'toggle'
+        : front
+        ? 'front'
+        : 'back'}',
+  );
+
   @override
   Future<bool> ffmpegAvailable() async => ffmpeg;
 

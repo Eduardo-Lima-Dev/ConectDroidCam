@@ -22,6 +22,20 @@ abstract interface class ReceiverPlatform {
 
   Future<void> disconnect();
 
+  // Comandos ao celular da conexão em andamento. Cada um devolve o motivo da falha, ou
+  // `null` se foi enviado; o resultado de verdade chega depois, como [CapabilitiesUpdate].
+
+  /// Pede que o celular comece a transmitir neste tamanho e FPS.
+  Future<String?> startStream(int width, int height, int fps);
+
+  /// Pede que o celular pare de transmitir, mantendo a conexão.
+  Future<String?> stopStream();
+
+  Future<String?> setFps(int fps);
+
+  /// Troca a câmera do celular; sem [front], alterna.
+  Future<String?> switchCamera({bool? front});
+
   /// O `ffmpeg` está instalado?
   Future<bool> ffmpegAvailable();
 

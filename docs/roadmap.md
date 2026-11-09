@@ -130,7 +130,7 @@ O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imag
 - [x] **Prévia** no app: o mesmo `ffmpeg` gera quadros JPEG de 480 px a 10 por segundo (sem textura do Flutter; o S8 deixou de ser necessário para a prévia). Validada com o celular de verdade em uma execução.
 - [x] **Seis webcams virtuais** (uma por tamanho e formato), escolhidas sozinhas pelo app, para trocar de resolução, tamanho, formato ou posição do celular sem o OBS reabrir a fonte. **Falta o usuário rodar o script com `sudo` e validar no OBS**; o núcleo e o app estão testados só com dispositivos simulados.
 - [x] Celulares lembrados e **conexão automática** (não é segurança; veja o aviso na tela), formato da imagem **Automático/Horizontal/Vertical** e tamanho da saída **HD/Full HD/2K** (fixo, independente da resolução do celular), ambos salvos entre execuções, redescoberta a cada 8 s com a lista vazia e botão "Procurar de novo".
-- [ ] **Controle pelo PC**: escolher resolução e FPS e iniciar/parar a transmissão pelo computador, sem mexer no celular. Exige que o servidor do celular fique ligado desde a abertura do app e mensagens novas no protocolo (tamanho arbitrário em `profile.set`, `stream.start` e `stream.stop`, além de `camera.switch` e `audio.set`, que já existem). O computador passa a mandar comandos ao celular pelo canal da sessão. **Próximo item; ainda não feito.**
+- [x] **Controle pelo PC**: o celular abre o servidor e anuncia-se assim que a prévia abre; o app do computador conecta e escolhe resolução e FPS, inicia e para a transmissão e troca a câmera (mensagens `capabilities`, `stream.start`, `stream.stop`, `fps.set` e `camera.switch`; veja a seção 3.0 do protocolo). Trocar a resolução reinicia a transmissão sem mexer na webcam virtual. Testado com celular simulado (Rust e Dart) e com o celular de verdade pelo `cdc-testreceiver --do`; a tela do app do Linux foi validada pelo usuário. Resolução arbitrária em `profile.set` não foi necessária.
 - [ ] Interface: pareamento e ícone na bandeja (fechar a janela mantém a transmissão).
 - [ ] Receptor para macOS (hoje só Linux).
 
@@ -222,7 +222,7 @@ Objetivo: instalar o receptor do Linux por `flatpak install flathub <id>`. **Nad
 ## Ordem recomendada
 
 1. **Validar o que existe** com o celular de verdade e o OBS: as seis webcams, trocar a resolução, girar o celular, e o APK com o `MulticastLock`. É curto e pode revelar defeitos antes de empilhar mais coisa.
-2. **Controle pelo PC**: escolher resolução e FPS e iniciar/parar pelo computador. Muda o fluxo do celular (o servidor fica ligado desde a abertura do app).
+2. ~~Controle pelo PC~~ (feito e validado).
 3. **Pareamento e TLS**, antes de qualquer uso fora de uma rede de confiança. Hoje qualquer aparelho da rede que ache o celular recebe o vídeo.
 4. **Microfone**: captura AAC no celular, ligado e desligado sem derrubar o vídeo, enviada ao microfone virtual do PipeWire.
 5. **USB do Android**, transmissão em segundo plano e superaquecimento. (Trocar câmera frontal e traseira já está feito no celular.)

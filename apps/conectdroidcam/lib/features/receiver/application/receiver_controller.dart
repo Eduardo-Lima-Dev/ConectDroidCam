@@ -42,6 +42,9 @@ class ReceiverState {
     this.incoming,
     this.outgoing,
     this.stats,
+    this.capabilities,
+    this.remoteMode,
+    this.remoteFps = 30,
     this.notice,
     this.error,
     this.discoveryError,
@@ -76,6 +79,16 @@ class ReceiverState {
   final IncomingVideo? incoming;
   final OutgoingVideo? outgoing;
   final LiveStats? stats;
+
+  /// O que o celular oferece e seu estado; `null` até ele informar.
+  final PhoneCapabilities? capabilities;
+
+  /// Resolução e FPS escolhidos aqui para o celular transmitir.
+  final PhoneMode? remoteMode;
+  final int remoteFps;
+
+  /// O celular está transmitindo (por ordem daqui ou por decisão de quem o usa).
+  bool get phoneStreaming => capabilities?.streaming ?? false;
 
   /// Aviso que não interrompe a conexão.
   final String? notice;
@@ -112,6 +125,9 @@ class ReceiverState {
     IncomingVideo? Function()? incoming,
     OutgoingVideo? Function()? outgoing,
     LiveStats? Function()? stats,
+    PhoneCapabilities? Function()? capabilities,
+    PhoneMode? Function()? remoteMode,
+    int? remoteFps,
     String? Function()? notice,
     String? Function()? error,
     String? Function()? discoveryError,
@@ -136,6 +152,9 @@ class ReceiverState {
       incoming: incoming != null ? incoming() : this.incoming,
       outgoing: outgoing != null ? outgoing() : this.outgoing,
       stats: stats != null ? stats() : this.stats,
+      capabilities: capabilities != null ? capabilities() : this.capabilities,
+      remoteMode: remoteMode != null ? remoteMode() : this.remoteMode,
+      remoteFps: remoteFps ?? this.remoteFps,
       notice: notice != null ? notice() : this.notice,
       error: error != null ? error() : this.error,
       discoveryError: discoveryError != null
@@ -429,6 +448,7 @@ class ReceiverController extends Notifier<ReceiverState> {
       incoming: () => null,
       outgoing: () => null,
       stats: () => null,
+      capabilities: () => null,
       notice: () => null,
       error: () => null,
     );
@@ -482,10 +502,18 @@ class ReceiverController extends Notifier<ReceiverState> {
           phonePlatform: () => platform,
         );
         _rememberConnectedPhone();
+      case CapabilitiesUpdate(:final capabilities):
+        _onCapabilities(capabilities);
       case ProfileUpdate(:final video):
+        // Se o celular já transmite, a escolha daqui passa a mostrar o que ele entrega.
+        final active = state.capabilities?.find(video.width, video.height);
         state = state.copyWith(
           phase: ReceiverPhase.connected,
           incoming: () => video,
+          remoteMode: active != null && state.phoneStreaming
+              ? () => active
+              : null,
+          remoteFps: state.phoneStreaming && video.fps > 0 ? video.fps : null,
         );
       case OutputUpdate(:final video):
         state = state.copyWith(outgoing: () => video);
@@ -509,6 +537,95 @@ class ReceiverController extends Notifier<ReceiverState> {
     }
   }
 
+  void _onCapabilities(PhoneCapabilities caps) {
+    // Mantém a escolha se o celular ainda a oferece; senão, Full HD ou a maior disponível.
+    var mode = state.remoteMode;
+    if (mode == null || caps.find(mode.width, mode.height)?.available != true) {
+      mode = caps.find(1920, 1080)?.available == true
+          ? caps.find(1920, 1080)
+          : caps.availableModes.firstOrNull;
+    }
+    var fps = state.remoteFps;
+    if (caps.fpsOptions.isNotEmpty && !caps.fpsOptions.contains(fps)) {
+      fps = caps.fpsOptions.contains(30) ? 30 : caps.fpsOptions.last;
+    }
+    state = state.copyWith(
+      phase: ReceiverPhase.connected,
+      capabilities: () => caps,
+      remoteMode: () => mode,
+      remoteFps: fps,
+      // Parou de transmitir: o que vinha do celular deixa de valer.
+      incoming: caps.streaming ? null : () => null,
+      outgoing: caps.streaming ? null : () => null,
+      stats: caps.streaming ? null : () => null,
+    );
+    if (!caps.streaming) {
+      try {
+        ref.read(previewFrameProvider.notifier).update(null);
+      } on Object catch (_) {}
+    }
+  }
+
+  // --- Controle do celular -------------------------------------------------------------
+
+  Future<void> _command(Future<String?> Function() send) async {
+    final reason = await send();
+    if (reason != null) {
+      state = state.copyWith(
+        error: () => 'Não consegui falar com o celular: $reason',
+      );
+    }
+  }
+
+  /// Escolhe a resolução. Com o celular transmitindo, ele para e recomeça no novo tamanho
+  /// (a webcam virtual não muda de tamanho, então o OBS não percebe).
+  Future<void> selectRemoteMode(PhoneMode mode) async {
+    final caps = state.capabilities;
+    if (caps == null || !mode.available || mode == state.remoteMode) return;
+    state = state.copyWith(remoteMode: () => mode, error: () => null);
+    if (caps.streaming) {
+      await _command(_platform.stopStream);
+      await _command(
+        () => _platform.startStream(mode.width, mode.height, _fpsFor(mode)),
+      );
+    }
+  }
+
+  int _fpsFor(PhoneMode mode) {
+    final fps = state.remoteFps;
+    return fps > mode.maxFps ? mode.maxFps : fps;
+  }
+
+  /// Escolhe o FPS; com o celular transmitindo, vale na hora.
+  Future<void> selectRemoteFps(int fps) async {
+    final caps = state.capabilities;
+    if (caps == null || fps == state.remoteFps) return;
+    state = state.copyWith(remoteFps: fps, error: () => null);
+    if (caps.streaming) await _command(() => _platform.setFps(fps));
+  }
+
+  Future<void> startPhoneStream() async {
+    final mode = state.remoteMode;
+    if (mode == null || state.phoneStreaming) return;
+    state = state.copyWith(error: () => null);
+    await _command(
+      () => _platform.startStream(mode.width, mode.height, _fpsFor(mode)),
+    );
+  }
+
+  Future<void> stopPhoneStream() async {
+    if (!state.phoneStreaming) return;
+    await _command(_platform.stopStream);
+  }
+
+  /// Alterna entre a câmera frontal e a traseira do celular.
+  Future<void> switchPhoneCamera() async {
+    final caps = state.capabilities;
+    if (caps == null || !caps.canSwitch) return;
+    state = state.copyWith(error: () => null);
+    await _command(() => _platform.switchCamera(front: !caps.front));
+  }
+
   /// Lembra o celular a que acabamos de conectar, para reconectar sozinho da próxima vez.
   void _rememberConnectedPhone() {
     final id = _connectedId;
@@ -530,6 +647,7 @@ class ReceiverController extends Notifier<ReceiverState> {
       incoming: () => null,
       outgoing: () => null,
       stats: () => null,
+      capabilities: () => null,
       error: error != null ? () => error : null,
     );
   }

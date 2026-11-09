@@ -406,12 +406,125 @@ class _Connected extends ConsumerWidget {
         _PreviewBox(state: state),
         if (lines.isNotEmpty) const SizedBox(height: 12),
         for (final line in lines) Text(line, style: theme.textTheme.bodyMedium),
+        if (state.capabilities != null) ...[
+          const SizedBox(height: 14),
+          _PhoneControls(state: state),
+        ],
         const SizedBox(height: 14),
         OutlinedButton.icon(
           onPressed: controller.disconnect,
           icon: const Icon(Icons.link_off),
           label: const Text('Desconectar'),
         ),
+      ],
+    );
+  }
+}
+
+/// Comanda o celular daqui: resolução, FPS, iniciar e parar, e trocar de câmera.
+class _PhoneControls extends ConsumerWidget {
+  const _PhoneControls({required this.state});
+
+  final ReceiverState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final controller = ref.read(receiverControllerProvider.notifier);
+    final caps = state.capabilities!;
+    final streaming = caps.streaming;
+    final mode = state.remoteMode;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Controle do celular', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (streaming)
+              FilledButton.tonalIcon(
+                onPressed: controller.stopPhoneStream,
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text('Parar transmissão'),
+              )
+            else
+              FilledButton.icon(
+                onPressed: mode == null ? null : controller.startPhoneStream,
+                icon: const Icon(Icons.play_circle_outline),
+                label: const Text('Iniciar transmissão'),
+              ),
+            if (caps.canSwitch)
+              OutlinedButton.icon(
+                onPressed: controller.switchPhoneCamera,
+                icon: const Icon(Icons.cameraswitch_outlined),
+                label: Text(
+                  caps.front
+                      ? 'Usar a câmera traseira'
+                      : 'Usar a câmera frontal',
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 16,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            DropdownMenu<PhoneMode>(
+              key: ValueKey('mode-${mode?.label}'),
+              label: const Text('Resolução'),
+              initialSelection: mode,
+              dropdownMenuEntries: [
+                for (final m in caps.modes)
+                  DropdownMenuEntry(
+                    value: m,
+                    label: m.label,
+                    enabled: m.available,
+                    trailingIcon: m.available
+                        ? null
+                        : Tooltip(
+                            message: m.reason ?? 'Indisponível neste celular',
+                            child: const Icon(Icons.info_outline, size: 18),
+                          ),
+                  ),
+              ],
+              onSelected: (m) {
+                if (m != null) controller.selectRemoteMode(m);
+              },
+            ),
+            DropdownMenu<int>(
+              key: ValueKey('fps-${state.remoteFps}'),
+              label: const Text('Quadros por segundo'),
+              initialSelection: state.remoteFps,
+              dropdownMenuEntries: [
+                for (final f in caps.fpsOptions)
+                  DropdownMenuEntry(
+                    value: f,
+                    label: '$f FPS',
+                    enabled: mode == null || f <= mode.maxFps,
+                  ),
+              ],
+              onSelected: (f) {
+                if (f != null) controller.selectRemoteFps(f);
+              },
+            ),
+          ],
+        ),
+        if (streaming)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Trocar a resolução reinicia a transmissão por um instante; '
+              'a webcam virtual mantém o tamanho e o OBS não percebe.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
       ],
     );
   }

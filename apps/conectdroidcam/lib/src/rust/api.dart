@@ -6,8 +6,8 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `clear_session`, `failure`, `new`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `clear_session`, `command`, `failure`, `new`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
 
 /// Começa a procurar celulares. Cada aparição e cada saída chegam em `updates`; se a busca
 /// não puder começar, chega um item com `error`.
@@ -39,6 +39,29 @@ Stream<ReceiverEvent> connectPhone({
 /// Encerra a sessão em andamento, se houver.
 Future<void> disconnectPhone() =>
     CdcCore.instance.api.crateApiDisconnectPhone();
+
+/// Pede ao celular que comece a transmitir neste tamanho e FPS.
+Future<String?> phoneStartStream({
+  required int width,
+  required int height,
+  required int fps,
+}) => CdcCore.instance.api.crateApiPhoneStartStream(
+  width: width,
+  height: height,
+  fps: fps,
+);
+
+/// Pede ao celular que pare de transmitir, mantendo a conexão.
+Future<String?> phoneStopStream() =>
+    CdcCore.instance.api.crateApiPhoneStopStream();
+
+/// Muda o FPS com a transmissão ligada.
+Future<String?> phoneSetFps({required int fps}) =>
+    CdcCore.instance.api.crateApiPhoneSetFps(fps: fps);
+
+/// Troca a câmera do celular: `Some(true)` frontal, `Some(false)` traseira, `None` alterna.
+Future<String?> phoneSwitchCamera({bool? front}) =>
+    CdcCore.instance.api.crateApiPhoneSwitchCamera(front: front);
 
 /// `true` se o `ffmpeg` está instalado: sem ele não há como escrever na webcam virtual.
 Future<bool> ffmpegAvailable() =>
@@ -111,6 +134,44 @@ class PhoneInfo {
           error == other.error;
 }
 
+/// Uma resolução oferecida pelo celular.
+class PhoneMode {
+  final int width;
+  final int height;
+  final bool available;
+  final int maxFps;
+
+  /// Por que não está disponível; vazio quando está.
+  final String reason;
+
+  const PhoneMode({
+    required this.width,
+    required this.height,
+    required this.available,
+    required this.maxFps,
+    required this.reason,
+  });
+
+  @override
+  int get hashCode =>
+      width.hashCode ^
+      height.hashCode ^
+      available.hashCode ^
+      maxFps.hashCode ^
+      reason.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PhoneMode &&
+          runtimeType == other.runtimeType &&
+          width == other.width &&
+          height == other.height &&
+          available == other.available &&
+          maxFps == other.maxFps &&
+          reason == other.reason;
+}
+
 class ReceiverEvent {
   final ReceiverEventKind kind;
   final String text;
@@ -130,6 +191,15 @@ class ReceiverEvent {
   /// Bytes de um quadro JPEG, só no evento `Preview`.
   final Uint8List preview;
 
+  /// Só em `Capabilities`.
+  final List<PhoneMode> modes;
+  final Uint32List fpsOptions;
+  final bool streaming;
+
+  /// A câmera em uso é a frontal.
+  final bool front;
+  final bool canSwitch;
+
   const ReceiverEvent({
     required this.kind,
     required this.text,
@@ -146,6 +216,11 @@ class ReceiverEvent {
     required this.statsDelayMs,
     required this.frames,
     required this.preview,
+    required this.modes,
+    required this.fpsOptions,
+    required this.streaming,
+    required this.front,
+    required this.canSwitch,
   });
 
   @override
@@ -164,7 +239,12 @@ class ReceiverEvent {
       statsKbps.hashCode ^
       statsDelayMs.hashCode ^
       frames.hashCode ^
-      preview.hashCode;
+      preview.hashCode ^
+      modes.hashCode ^
+      fpsOptions.hashCode ^
+      streaming.hashCode ^
+      front.hashCode ^
+      canSwitch.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -185,7 +265,12 @@ class ReceiverEvent {
           statsKbps == other.statsKbps &&
           statsDelayMs == other.statsDelayMs &&
           frames == other.frames &&
-          preview == other.preview;
+          preview == other.preview &&
+          modes == other.modes &&
+          fpsOptions == other.fpsOptions &&
+          streaming == other.streaming &&
+          front == other.front &&
+          canSwitch == other.canSwitch;
 }
 
 /// Que tipo de coisa um [`ReceiverEvent`] descreve. Só os campos daquele tipo valem.
@@ -205,6 +290,10 @@ enum ReceiverEventKind {
 
   /// Um quadro JPEG da prévia: `preview`.
   preview,
+
+  /// O que o celular sabe fazer e seu estado: `modes`, `fps_options`, `streaming`,
+  /// `front` e `can_switch`.
+  capabilities,
 
   /// O celular reportou um erro: `text` = código, `text2` = mensagem.
   senderError,

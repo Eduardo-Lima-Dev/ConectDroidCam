@@ -126,6 +126,25 @@ class RustReceiverPlatform implements ReceiverPlatform {
         );
       case api.ReceiverEventKind.preview:
         return PreviewUpdate(e.preview);
+      case api.ReceiverEventKind.capabilities:
+        return CapabilitiesUpdate(
+          PhoneCapabilities(
+            modes: [
+              for (final m in e.modes)
+                PhoneMode(
+                  width: m.width,
+                  height: m.height,
+                  available: m.available,
+                  maxFps: m.maxFps,
+                  reason: m.reason.isEmpty ? null : m.reason,
+                ),
+            ],
+            fpsOptions: e.fpsOptions.toList(),
+            front: e.front,
+            canSwitch: e.canSwitch,
+            streaming: e.streaming,
+          ),
+        );
       case api.ReceiverEventKind.senderError:
         return SenderErrorUpdate(e.text2.isEmpty ? e.text : e.text2);
       case api.ReceiverEventKind.notice:
@@ -148,6 +167,20 @@ class RustReceiverPlatform implements ReceiverPlatform {
 
   @override
   Future<void> disconnect() => api.disconnectPhone();
+
+  @override
+  Future<String?> startStream(int width, int height, int fps) async =>
+      api.phoneStartStream(width: width, height: height, fps: fps);
+
+  @override
+  Future<String?> stopStream() async => api.phoneStopStream();
+
+  @override
+  Future<String?> setFps(int fps) async => api.phoneSetFps(fps: fps);
+
+  @override
+  Future<String?> switchCamera({bool? front}) async =>
+      api.phoneSwitchCamera(front: front);
 
   @override
   Future<bool> ffmpegAvailable() => api.ffmpegAvailable();
