@@ -17,6 +17,10 @@ abstract interface class SenderPlatform {
 
   /// Muda o FPS com a transmissão ligada, sem reiniciar câmera nem codificador.
   Future<void> setFps(int fps);
+
+  /// Troca entre a câmera frontal e a traseira (sem `front`, alterna). Com a transmissão
+  /// ligada o vídeo só fica parado por cerca de um segundo.
+  Future<PreviewInfo> switchCamera({bool? front});
   Future<void> stopStreaming();
   Stream<SenderEvent> get events;
 }
@@ -89,16 +93,23 @@ class ChannelSenderPlatform implements SenderPlatform {
   }
 
   @override
-  Future<PreviewInfo> startPreview() async {
-    final raw = await _call<Map<Object?, Object?>>('startPreview');
-    return PreviewInfo(
-      textureId: (raw['textureId']! as num).toInt(),
-      width: raw['width']! as int,
-      height: raw['height']! as int,
-      sensorOrientation: (raw['sensorOrientation'] as int?) ?? 90,
-      displayRotation: (raw['displayRotation'] as int?) ?? 0,
-    );
-  }
+  Future<PreviewInfo> startPreview() async =>
+      _parsePreview(await _call<Map<Object?, Object?>>('startPreview'));
+
+  @override
+  Future<PreviewInfo> switchCamera({bool? front}) async => _parsePreview(
+    await _call<Map<Object?, Object?>>('switchCamera', {'front': front}),
+  );
+
+  PreviewInfo _parsePreview(Map<Object?, Object?> raw) => PreviewInfo(
+    textureId: (raw['textureId']! as num).toInt(),
+    width: raw['width']! as int,
+    height: raw['height']! as int,
+    sensorOrientation: (raw['sensorOrientation'] as int?) ?? 90,
+    displayRotation: (raw['displayRotation'] as int?) ?? 0,
+    isFront: (raw['isFront'] as bool?) ?? false,
+    canSwitch: (raw['canSwitch'] as bool?) ?? false,
+  );
 
   @override
   Future<void> stopPreview() => _call<void>('stopPreview');

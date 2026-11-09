@@ -17,6 +17,10 @@ class FakeSenderPlatform implements SenderPlatform {
   SenderException? startPreviewError;
   SenderException? startStreamingError;
   SenderException? setFpsError;
+  SenderException? switchCameraError;
+  bool front = false;
+  bool canSwitch = true;
+  final List<bool?> switchCalls = [];
 
   /// Um aparelho parecido com o de teste: HD e Full HD ok, 2K indisponível,
   /// e duas resoluções extras (uma que só chega a 20 FPS).
@@ -73,7 +77,28 @@ class FakeSenderPlatform implements SenderPlatform {
     final error = startPreviewError;
     if (error != null) throw error;
     previewStarts++;
-    return const PreviewInfo(textureId: 1, width: 1280, height: 720);
+    return PreviewInfo(
+      textureId: 1,
+      width: 1280,
+      height: 720,
+      isFront: front,
+      canSwitch: canSwitch,
+    );
+  }
+
+  @override
+  Future<PreviewInfo> switchCamera({bool? front}) async {
+    final error = switchCameraError;
+    if (error != null) throw error;
+    switchCalls.add(front);
+    this.front = front ?? !this.front;
+    return PreviewInfo(
+      textureId: 1,
+      width: 1280,
+      height: 720,
+      isFront: this.front,
+      canSwitch: canSwitch,
+    );
   }
 
   @override

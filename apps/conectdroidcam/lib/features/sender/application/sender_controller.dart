@@ -244,6 +244,32 @@ class SenderController extends Notifier<SenderState> {
     }
   }
 
+  /// Troca entre a câmera frontal e a traseira. Com a transmissão ligada ela continua: o
+  /// vídeo só para por cerca de um segundo. Se a câmera nova não servir (por exemplo, não
+  /// oferece a resolução em uso), a troca é recusada e nada muda.
+  Future<void> switchCamera() async {
+    final current = state.preview;
+    if (state.busy || current == null || !current.canSwitch) return;
+    if (state.phase != SenderPhase.ready && !state.isStreaming) return;
+    state = state.copyWith(busy: true, notice: () => null);
+    try {
+      final preview = await _platform.switchCamera(front: !current.isFront);
+      final capabilities = await _platform.listModes();
+      final selected = state.isStreaming
+          ? state.selected
+          : _pickMode(capabilities, state.selected);
+      state = state.copyWith(
+        preview: () => preview,
+        capabilities: capabilities,
+        selected: selected,
+        selectedFps: capabilities.clampFps(selected, state.selectedFps),
+        busy: false,
+      );
+    } on SenderException catch (e) {
+      state = state.copyWith(busy: false, notice: () => e.message);
+    }
+  }
+
   Future<void> startStreaming() async {
     if (state.busy || state.phase != SenderPhase.ready || !state.canStart) {
       return;

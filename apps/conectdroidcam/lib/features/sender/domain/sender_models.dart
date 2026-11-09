@@ -121,6 +121,8 @@ class PreviewInfo {
     required this.height,
     this.sensorOrientation = 90,
     this.displayRotation = 0,
+    this.isFront = false,
+    this.canSwitch = false,
   });
 
   final int textureId;
@@ -135,12 +137,20 @@ class PreviewInfo {
   /// Rotação da tela: 0, 1, 2 ou 3 (0°, 90°, 180°, 270° como em `Surface.ROTATION_*`).
   final int displayRotation;
 
+  /// A câmera em uso é a frontal. Só a prévia sai espelhada; o vídeo enviado não.
+  final bool isFront;
+
+  /// O aparelho tem câmera frontal e traseira.
+  final bool canSwitch;
+
   PreviewInfo copyWith({int? displayRotation}) => PreviewInfo(
     textureId: textureId,
     width: width,
     height: height,
     sensorOrientation: sensorOrientation,
     displayRotation: displayRotation ?? this.displayRotation,
+    isFront: isFront,
+    canSwitch: canSwitch,
   );
 
   /// Sensores girados 90° ou 270° entregam a textura com largura e altura trocadas.

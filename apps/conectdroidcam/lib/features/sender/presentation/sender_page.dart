@@ -227,6 +227,18 @@ class _ConsoleState extends ConsumerState<_Console> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (state.preview?.canSwitch ?? false) ...[
+                    _OverlayButton(
+                      icon: Icons.cameraswitch_outlined,
+                      tooltip: 'Trocar de câmera',
+                      onPressed: state.busy
+                          ? null
+                          : ref
+                                .read(senderControllerProvider.notifier)
+                                .switchCamera,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   _OverlayButton(
                     icon: _menuOpen ? Icons.close : Icons.tune,
                     tooltip: _menuOpen ? 'Fechar o menu' : 'Abrir o menu',
@@ -268,7 +280,7 @@ class _OverlayButton extends StatelessWidget {
 
   final IconData icon;
   final String tooltip;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -339,11 +351,15 @@ class _PreviewBox extends StatelessWidget {
                 Center(
                   child: info == null
                       ? const SizedBox.shrink()
-                      : RotatedBox(
-                          quarterTurns: info!.quarterTurns,
-                          child: AspectRatio(
-                            aspectRatio: info!.textureAspectRatio,
-                            child: Texture(textureId: info!.textureId),
+                      : Transform.flip(
+                          // Espelho só na prévia da câmera frontal; o vídeo enviado não é espelhado.
+                          flipX: info!.isFront,
+                          child: RotatedBox(
+                            quarterTurns: info!.quarterTurns,
+                            child: AspectRatio(
+                              aspectRatio: info!.textureAspectRatio,
+                              child: Texture(textureId: info!.textureId),
+                            ),
                           ),
                         ),
                 ),
@@ -416,6 +432,18 @@ class _ControlPanel extends ConsumerWidget {
             icon: const Icon(Icons.play_circle_outline),
             label: const Text('Iniciar transmissão'),
           ),
+        if (state.preview?.canSwitch ?? false) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: state.busy ? null : controller.switchCamera,
+            icon: const Icon(Icons.cameraswitch_outlined),
+            label: Text(
+              state.preview!.isFront
+                  ? 'Usar a câmera traseira'
+                  : 'Usar a câmera frontal',
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         // O aviso fica junto do botão, visível antes de transmitir, e não no fim do painel.
         Text(

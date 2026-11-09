@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.util.Size
 import android.view.WindowManager
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -18,7 +19,7 @@ import java.net.NetworkInterface
  *
  * MethodChannel `cdc/sender`: hasCameraPermission, requestCameraPermission,
  * listModes, localAddresses, startPreview, stopPreview, startStreaming(width, height, fps),
- * setFps(fps), stopStreaming.
+ * setFps(fps), switchCamera(front), stopStreaming.
  *
  * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | discovery | error.
  */
@@ -42,6 +43,9 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
 
     /** FPS máximo da resolução em uso; limita o que `setFps` aceita. */
     private var streamMaxFps = DEFAULT_FPS
+
+    /** Tamanho que o codificador usa agora; `null` sem transmissão. */
+    private var streamSize: Size? = null
 
     init {
         MethodChannel(engine.dartExecutor.binaryMessenger, METHODS).setMethodCallHandler(this)
@@ -73,6 +77,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                     result,
                 )
                 "setFps" -> setFps(call.argument<Int>("fps"), result)
+                "switchCamera" -> switchCamera(call.argument<Boolean>("front"), result)
                 "stopStreaming" -> {
                     stopStreaming()
                     result.success(null)
@@ -151,17 +156,39 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
             main.post {
                 outcome.fold(
                     onSuccess = {
-                        result.success(
-                            mapOf(
-                                "textureId" to it.textureId,
-                                "width" to it.width,
-                                "height" to it.height,
-                                "sensorOrientation" to it.sensorOrientation,
-                                "displayRotation" to displayRotation(),
-                            ),
-                        )
+                        result.success(previewMap(it))
                     },
                     onFailure = { result.error("camera", it.message ?: "Falha ao abrir a câmera", null) },
+                )
+            }
+        }
+    }
+
+    private fun previewMap(p: CameraController.Preview) = mapOf(
+        "textureId" to p.textureId,
+        "width" to p.width,
+        "height" to p.height,
+        "sensorOrientation" to p.sensorOrientation,
+        "displayRotation" to displayRotation(),
+        "isFront" to p.isFront,
+        "canSwitch" to p.canSwitch,
+    )
+
+    /**
+     * Troca a câmera, com ou sem transmissão. Com ela ligada o codificador não para: o vídeo
+     * só fica parado enquanto a câmera nova abre, e a rotação enviada ao computador é refeita.
+     */
+    private fun switchCamera(front: Boolean?, result: MethodChannel.Result) {
+        val cam = camera ?: return result.error("state", "Abra a prévia primeiro", null)
+        val wantFront = front ?: !cam.isFrontFacing
+        cam.switchFacing(wantFront, streamSize) { outcome ->
+            main.post {
+                outcome.fold(
+                    onSuccess = {
+                        server?.updateRotation(videoRotation(cam))
+                        result.success(previewMap(it))
+                    },
+                    onFailure = { result.error("camera", it.message ?: "Falha ao trocar de câmera", null) },
                 )
             }
         }
@@ -214,6 +241,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
             }
         }
         streamMaxFps = maxFps
+        streamSize = Size(width, height)
         cam.targetFps = fps
         cam.attachEncoder(newEncoder.inputSurface) { outcome ->
             main.post {
@@ -263,6 +291,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         statsTask?.let { main.removeCallbacks(it) }
         statsTask = null
         lastCounters = null
+        streamSize = null
         camera?.detachEncoder()
         encoder?.stop()
         encoder = null
