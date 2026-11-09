@@ -68,7 +68,11 @@ impl Output {
                 let mut child = Command::new(&options.ffmpeg)
                     .args(["-hide_banner", "-loglevel", "error"])
                     .args(["-fflags", "nobuffer", "-flags", "low_delay"])
-                    .args(["-f", "h264", "-i", "-"])
+                    // H.264 cru em pipe: sem limitar a sondagem, o ffmpeg espera bytes demais
+                    // (ou o fim da entrada) antes de abrir a saída. O fluxo já começa em
+                    // SPS/PPS, então poucos bytes bastam.
+                    .args(["-probesize", "100000", "-analyzeduration", "0"])
+                    .args(["-f", "h264", "-framerate", "30", "-i", "-"])
                     .args(["-pix_fmt", "yuyv422", "-f", "v4l2", device])
                     .stdin(Stdio::piped())
                     .spawn()
@@ -214,12 +218,15 @@ pub fn run(mut stream: TcpStream, options: &Options) -> Result<Report, ReceiverE
                 }
                 last_video = Some(now);
 
-                // Só começa a entregar a partir de um keyframe, depois da configuração.
-                if !config_written
-                    && frame.is_keyframe()
-                    && let Some(cfg) = &config
-                {
-                    output.write(cfg)?;
+                // Só começa a entregar a partir de um keyframe. O SPS/PPS enviado à parte
+                // vai primeiro, se existir; sem ele, o próprio keyframe o carrega, porque
+                // o codificador repete SPS/PPS em cada IDR.
+                if !config_written && frame.is_keyframe() {
+                    if let Some(cfg) = &config {
+                        output.write(cfg)?;
+                    } else {
+                        eprintln!("aviso: sem frame de configuração; usando o SPS/PPS do keyframe");
+                    }
                     config_written = true;
                 }
                 if config_written {
