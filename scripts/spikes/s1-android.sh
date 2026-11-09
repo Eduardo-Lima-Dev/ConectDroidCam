@@ -19,13 +19,14 @@ BIN="$RAIZ/rust/target/debug/cdc-testreceiver"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"; kill $(jobs -p) 2>/dev/null || true' EXIT
 
-echo "== receptor: ${ADDR} -> ${DEV} por ${SEGUNDOS}s"
+echo "== receptor: ${ADDR} -> ${DEV} por ${SEGUNDOS}s (CDC_FFMPEG_LOGLEVEL=info mostra o escritor)"
 "$BIN" "$ADDR" --seconds "$SEGUNDOS" --v4l2 "$DEV" --quiet >"$LOG" 2>&1 &
 RECEPTOR=$!
 sleep 4
 
 echo "== lendo ${DEV} de volta"
-ffmpeg -hide_banner -f v4l2 -i "$DEV" -t 5 -f null - 2>&1 \
+# O leitor trava se nenhum frame chegar ao dispositivo; o prazo evita prender o script.
+timeout -s KILL 15 ffmpeg -hide_banner -f v4l2 -i "$DEV" -t 5 -f null - 2>&1 \
   | tr '\r' '\n' | grep -E 'Stream #|frame=|rror' | tail -3 || true
 
 wait "$RECEPTOR" || true

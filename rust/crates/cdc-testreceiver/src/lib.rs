@@ -66,8 +66,12 @@ impl Output {
         let ffmpeg = match &options.sink.v4l2 {
             Some(device) => {
                 let mut child = Command::new(&options.ffmpeg)
-                    .args(["-hide_banner", "-loglevel", "error"])
-                    .args(["-fflags", "nobuffer", "-flags", "low_delay"])
+                    .args(["-hide_banner", "-loglevel"])
+                    // `CDC_FFMPEG_LOGLEVEL=info` mostra o que o ffmpeg decodifica e escreve.
+                    .arg(std::env::var("CDC_FFMPEG_LOGLEVEL").unwrap_or_else(|_| "error".into()))
+                    // Sem `-fflags nobuffer`: com o H.264 de um MediaCodec ele fazia o ffmpeg perder cerca
+                    // de 30% dos frames (76 de 106 num trecho real) e, ao vivo, quase todos.
+                    .args(["-flags", "low_delay"])
                     // H.264 cru em pipe: sem limitar a sondagem, o ffmpeg espera bytes demais
                     // (ou o fim da entrada) antes de abrir a saída. O fluxo já começa em
                     // SPS/PPS, então poucos bytes bastam.
