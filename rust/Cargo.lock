@@ -145,6 +145,7 @@ name = "cdc-ffi"
 version = "0.1.0"
 dependencies = [
  "cdc-core",
+ "cdc-protocol",
  "flutter_rust_bridge",
 ]
 
@@ -162,6 +163,7 @@ name = "cdc-testreceiver"
 version = "0.1.0"
 dependencies = [
  "cdc-core",
+ "cdc-protocol",
 ]
 
 [[package]]

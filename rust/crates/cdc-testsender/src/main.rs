@@ -1,12 +1,12 @@
 //! Uso: cdc-testsender [--bind 127.0.0.1] [--port 47821] [--profile hd|fullhd|qhd] [--seconds 10]
 //!                     [--rotation 0|90|180|270] [--rotate-after SEGUNDOS:ROTACAO]
-//!                     [--advertise NOME]
+//!                     [--advertise NOME] [--controllable]
 
 use std::net::TcpListener;
 use std::process::ExitCode;
 
 use cdc_protocol::VideoProfile;
-use cdc_testsender::{Options, serve_connection};
+use cdc_testsender::{Options, serve_connection, serve_controllable};
 
 struct Args {
     bind: String,
@@ -16,6 +16,7 @@ struct Args {
     rotation: u32,
     rotate_after: Option<(u32, u32)>,
     advertise: Option<String>,
+    controllable: bool,
 }
 
 /// Registra o serviço mDNS e devolve o daemon, que precisa continuar vivo para ele existir.
@@ -53,6 +54,7 @@ fn parse_args() -> Result<Args, String> {
         rotation: 0,
         rotate_after: None,
         advertise: None,
+        controllable: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
@@ -80,6 +82,7 @@ fn parse_args() -> Result<Args, String> {
                 let s = s.parse().map_err(|_| "segundos inválidos".to_string())?;
                 args.rotate_after = Some((s, parse_rotation(r)?));
             }
+            "--controllable" => args.controllable = true,
             "--advertise" => args.advertise = Some(value("--advertise")?),
             "--profile" => {
                 args.profile = match value("--profile")?.as_str() {
@@ -145,6 +148,16 @@ fn main() -> ExitCode {
         rotate_after: args.rotate_after,
         ..Options::new(args.profile, args.seconds)
     };
+    if args.controllable {
+        // Celular que espera ordens do computador: transmite só após `stream.start`.
+        return match serve_controllable(stream, &options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("erro: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match serve_connection(stream, &options) {
         Ok(summary) => {
             eprintln!(

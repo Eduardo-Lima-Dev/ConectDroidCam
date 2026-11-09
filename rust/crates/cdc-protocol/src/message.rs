@@ -78,6 +78,19 @@ pub struct ProfileAvailability {
     pub reason: Option<String>,
 }
 
+/// Uma resolução que o celular pode ou não entregar, com o motivo quando não pode.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapabilityMode {
+    pub width: u32,
+    pub height: u32,
+    pub available: bool,
+    /// Maior FPS que a câmera sustenta nesta resolução.
+    pub max_fps: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 /// Códigos de erro tipados.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -96,6 +109,8 @@ pub enum ErrorCode {
     UsbTunnelFailed,
     VirtualCameraUnavailable,
     DecoderFailed,
+    /// Um comando do computador (iniciar, trocar de câmera...) não pôde ser executado.
+    CommandFailed,
 }
 
 /// Mensagem de controle.
@@ -144,6 +159,29 @@ pub enum Message {
         #[serde(default)]
         rotation: u32,
     },
+    /// Celular informa o que sabe fazer e em que estado está. Vai logo após a conexão e
+    /// de novo sempre que algo muda (transmissão ligada ou parada, câmera trocada).
+    #[serde(rename = "capabilities")]
+    Capabilities {
+        modes: Vec<CapabilityMode>,
+        /// FPS fixos que a câmera em uso aceita.
+        fps_options: Vec<u32>,
+        /// Câmera em uso.
+        facing: Facing,
+        /// O aparelho tem câmera frontal e traseira.
+        can_switch: bool,
+        /// A transmissão de vídeo está ligada.
+        streaming: bool,
+    },
+    /// Computador pede ao celular que comece a transmitir com este tamanho e FPS.
+    #[serde(rename = "stream.start")]
+    StreamStart { width: u32, height: u32, fps: u32 },
+    /// Computador pede que o celular pare de transmitir, mantendo a conexão.
+    #[serde(rename = "stream.stop")]
+    StreamStop,
+    /// Computador muda o FPS com a transmissão ligada.
+    #[serde(rename = "fps.set")]
+    FpsSet { fps: u32 },
     #[serde(rename = "audio.set")]
     AudioSet { enabled: bool },
     #[serde(rename = "camera.switch")]
@@ -268,6 +306,35 @@ mod tests {
                 bitrate_kbps: 5800,
                 rotation: 90,
             },
+            Message::Capabilities {
+                modes: vec![
+                    CapabilityMode {
+                        width: 1920,
+                        height: 1080,
+                        available: true,
+                        max_fps: 30,
+                        reason: None,
+                    },
+                    CapabilityMode {
+                        width: 2560,
+                        height: 1440,
+                        available: false,
+                        max_fps: 30,
+                        reason: Some("sem codificador".into()),
+                    },
+                ],
+                fps_options: vec![15, 30],
+                facing: Facing::Back,
+                can_switch: true,
+                streaming: false,
+            },
+            Message::StreamStart {
+                width: 1920,
+                height: 1080,
+                fps: 30,
+            },
+            Message::StreamStop,
+            Message::FpsSet { fps: 15 },
             Message::AudioSet { enabled: false },
             Message::CameraSwitch {
                 facing: Some(Facing::Front),
@@ -335,6 +402,30 @@ mod tests {
                 .unwrap()
                 .contains("TLS_FINGERPRINT_MISMATCH")
         );
+    }
+
+    #[test]
+    fn comandos_novos_usam_nomes_do_protocolo() {
+        let texto = |m: Message| String::from_utf8(m.to_json().unwrap()).unwrap();
+        assert!(texto(Message::StreamStop).contains(r#""type":"stream.stop""#));
+        assert!(
+            texto(Message::StreamStart {
+                width: 1,
+                height: 2,
+                fps: 3
+            })
+            .contains(r#""type":"stream.start""#)
+        );
+        let caps = texto(Message::Capabilities {
+            modes: vec![],
+            fps_options: vec![30],
+            facing: Facing::Front,
+            can_switch: true,
+            streaming: true,
+        });
+        assert!(caps.contains(r#""fpsOptions":[30]"#), "{caps}");
+        assert!(caps.contains(r#""canSwitch":true"#), "{caps}");
+        assert!(caps.contains(r#""facing":"front""#), "{caps}");
     }
 
     #[test]

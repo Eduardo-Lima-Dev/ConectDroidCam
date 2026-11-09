@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1185815827;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 477192514;
 
 // Section: executor
 
@@ -197,6 +197,141 @@ fn wire__crate__api__ffmpeg_available_impl(
         },
     )
 }
+fn wire__crate__api__phone_set_fps_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "phone_set_fps",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_fps = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(crate::api::phone_set_fps(api_fps))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__phone_start_stream_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "phone_start_stream",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_width = <u32>::sse_decode(&mut deserializer);
+            let api_height = <u32>::sse_decode(&mut deserializer);
+            let api_fps = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(crate::api::phone_start_stream(
+                        api_width, api_height, api_fps,
+                    ))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__phone_stop_stream_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "phone_stop_stream",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(crate::api::phone_stop_stream())?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__phone_switch_camera_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "phone_switch_camera",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_front = <Option<bool>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Ok::<_, ()>(crate::api::phone_switch_camera(api_front))?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__start_discovery_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -327,6 +462,30 @@ impl SseDecode for i32 {
     }
 }
 
+impl SseDecode for Vec<crate::api::PhoneMode> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::PhoneMode>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<u32>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<u8> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -356,6 +515,17 @@ impl SseDecode for Option<String> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<String>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<bool> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<bool>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -410,6 +580,24 @@ impl SseDecode for crate::api::PhoneInfo {
     }
 }
 
+impl SseDecode for crate::api::PhoneMode {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_width = <u32>::sse_decode(deserializer);
+        let mut var_height = <u32>::sse_decode(deserializer);
+        let mut var_available = <bool>::sse_decode(deserializer);
+        let mut var_maxFps = <u32>::sse_decode(deserializer);
+        let mut var_reason = <String>::sse_decode(deserializer);
+        return crate::api::PhoneMode {
+            width: var_width,
+            height: var_height,
+            available: var_available,
+            max_fps: var_maxFps,
+            reason: var_reason,
+        };
+    }
+}
+
 impl SseDecode for crate::api::ReceiverEvent {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -428,6 +616,11 @@ impl SseDecode for crate::api::ReceiverEvent {
         let mut var_statsDelayMs = <f64>::sse_decode(deserializer);
         let mut var_frames = <u64>::sse_decode(deserializer);
         let mut var_preview = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_modes = <Vec<crate::api::PhoneMode>>::sse_decode(deserializer);
+        let mut var_fpsOptions = <Vec<u32>>::sse_decode(deserializer);
+        let mut var_streaming = <bool>::sse_decode(deserializer);
+        let mut var_front = <bool>::sse_decode(deserializer);
+        let mut var_canSwitch = <bool>::sse_decode(deserializer);
         return crate::api::ReceiverEvent {
             kind: var_kind,
             text: var_text,
@@ -444,6 +637,11 @@ impl SseDecode for crate::api::ReceiverEvent {
             stats_delay_ms: var_statsDelayMs,
             frames: var_frames,
             preview: var_preview,
+            modes: var_modes,
+            fps_options: var_fpsOptions,
+            streaming: var_streaming,
+            front: var_front,
+            can_switch: var_canSwitch,
         };
     }
 }
@@ -458,10 +656,11 @@ impl SseDecode for crate::api::ReceiverEventKind {
             2 => crate::api::ReceiverEventKind::Output,
             3 => crate::api::ReceiverEventKind::Stats,
             4 => crate::api::ReceiverEventKind::Preview,
-            5 => crate::api::ReceiverEventKind::SenderError,
-            6 => crate::api::ReceiverEventKind::Notice,
-            7 => crate::api::ReceiverEventKind::Ended,
-            8 => crate::api::ReceiverEventKind::Failed,
+            5 => crate::api::ReceiverEventKind::Capabilities,
+            6 => crate::api::ReceiverEventKind::SenderError,
+            7 => crate::api::ReceiverEventKind::Notice,
+            8 => crate::api::ReceiverEventKind::Ended,
+            9 => crate::api::ReceiverEventKind::Failed,
             _ => unreachable!("Invalid variant for ReceiverEventKind: {}", inner),
         };
     }
@@ -527,8 +726,12 @@ fn pde_ffi_dispatcher_primary_impl(
         2 => wire__crate__api__connect_phone_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__disconnect_phone_impl(port, ptr, rust_vec_len, data_len),
         4 => wire__crate__api__ffmpeg_available_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__start_discovery_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__stop_discovery_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__phone_set_fps_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__phone_start_stream_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__phone_stop_stream_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__phone_switch_camera_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__start_discovery_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__stop_discovery_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -603,6 +806,25 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::PhoneInfo> for crate::api::Ph
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::PhoneMode {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.width.into_into_dart().into_dart(),
+            self.height.into_into_dart().into_dart(),
+            self.available.into_into_dart().into_dart(),
+            self.max_fps.into_into_dart().into_dart(),
+            self.reason.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::PhoneMode {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::PhoneMode> for crate::api::PhoneMode {
+    fn into_into_dart(self) -> crate::api::PhoneMode {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::ReceiverEvent {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -621,6 +843,11 @@ impl flutter_rust_bridge::IntoDart for crate::api::ReceiverEvent {
             self.stats_delay_ms.into_into_dart().into_dart(),
             self.frames.into_into_dart().into_dart(),
             self.preview.into_into_dart().into_dart(),
+            self.modes.into_into_dart().into_dart(),
+            self.fps_options.into_into_dart().into_dart(),
+            self.streaming.into_into_dart().into_dart(),
+            self.front.into_into_dart().into_dart(),
+            self.can_switch.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -640,10 +867,11 @@ impl flutter_rust_bridge::IntoDart for crate::api::ReceiverEventKind {
             Self::Output => 2.into_dart(),
             Self::Stats => 3.into_dart(),
             Self::Preview => 4.into_dart(),
-            Self::SenderError => 5.into_dart(),
-            Self::Notice => 6.into_dart(),
-            Self::Ended => 7.into_dart(),
-            Self::Failed => 8.into_dart(),
+            Self::Capabilities => 5.into_dart(),
+            Self::SenderError => 6.into_dart(),
+            Self::Notice => 7.into_dart(),
+            Self::Ended => 8.into_dart(),
+            Self::Failed => 9.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -725,6 +953,26 @@ impl SseEncode for i32 {
     }
 }
 
+impl SseEncode for Vec<crate::api::PhoneMode> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::PhoneMode>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <u32>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<u8> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -751,6 +999,16 @@ impl SseEncode for Option<String> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <String>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<bool> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <bool>::sse_encode(value, serializer);
         }
     }
 }
@@ -802,6 +1060,17 @@ impl SseEncode for crate::api::PhoneInfo {
     }
 }
 
+impl SseEncode for crate::api::PhoneMode {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.width, serializer);
+        <u32>::sse_encode(self.height, serializer);
+        <bool>::sse_encode(self.available, serializer);
+        <u32>::sse_encode(self.max_fps, serializer);
+        <String>::sse_encode(self.reason, serializer);
+    }
+}
+
 impl SseEncode for crate::api::ReceiverEvent {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -820,6 +1089,11 @@ impl SseEncode for crate::api::ReceiverEvent {
         <f64>::sse_encode(self.stats_delay_ms, serializer);
         <u64>::sse_encode(self.frames, serializer);
         <Vec<u8>>::sse_encode(self.preview, serializer);
+        <Vec<crate::api::PhoneMode>>::sse_encode(self.modes, serializer);
+        <Vec<u32>>::sse_encode(self.fps_options, serializer);
+        <bool>::sse_encode(self.streaming, serializer);
+        <bool>::sse_encode(self.front, serializer);
+        <bool>::sse_encode(self.can_switch, serializer);
     }
 }
 
@@ -833,10 +1107,11 @@ impl SseEncode for crate::api::ReceiverEventKind {
                 crate::api::ReceiverEventKind::Output => 2,
                 crate::api::ReceiverEventKind::Stats => 3,
                 crate::api::ReceiverEventKind::Preview => 4,
-                crate::api::ReceiverEventKind::SenderError => 5,
-                crate::api::ReceiverEventKind::Notice => 6,
-                crate::api::ReceiverEventKind::Ended => 7,
-                crate::api::ReceiverEventKind::Failed => 8,
+                crate::api::ReceiverEventKind::Capabilities => 5,
+                crate::api::ReceiverEventKind::SenderError => 6,
+                crate::api::ReceiverEventKind::Notice => 7,
+                crate::api::ReceiverEventKind::Ended => 8,
+                crate::api::ReceiverEventKind::Failed => 9,
                 _ => {
                     unimplemented!("");
                 }

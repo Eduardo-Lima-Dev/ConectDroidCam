@@ -9,12 +9,14 @@ pub mod annexb;
 use std::io::{self, BufWriter, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use cdc_protocol::{
-    FLAG_KEYFRAME, Frame, FrameType, Message, Platform, ProtocolError, VideoProfile,
+    CapabilityMode, ErrorCode, FLAG_KEYFRAME, Facing, Frame, FrameType, Message, Platform,
+    ProtocolError, VideoProfile,
 };
 use thiserror::Error;
 
@@ -328,4 +330,217 @@ fn is_disconnect_io(error: &io::Error) -> bool {
             | io::ErrorKind::ConnectionReset
             | io::ErrorKind::ConnectionAborted
     )
+}
+
+// --- Celular controlável pelo computador ----------------------------------------------
+
+/// Escreve no socket só frames completos: o que se acumula aqui sai de uma vez no `flush`,
+/// com o `Mutex` preso, e nunca se mistura com uma mensagem de controle de outra thread.
+struct SharedWriter {
+    socket: Arc<Mutex<TcpStream>>,
+    pending: Vec<u8>,
+    stop: Arc<AtomicBool>,
+}
+
+impl Write for SharedWriter {
+    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        self.pending.extend_from_slice(data);
+        Ok(data.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if self.stop.load(Ordering::SeqCst) {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "transmissão parada",
+            ));
+        }
+        let mut socket = self
+            .socket
+            .lock()
+            .map_err(|_| io::Error::other("estado interno corrompido"))?;
+        let result = socket
+            .write_all(&self.pending)
+            .and_then(|()| socket.flush());
+        self.pending.clear();
+        result
+    }
+}
+
+/// Estado do celular simulado que o computador controla.
+struct Phone {
+    socket: Arc<Mutex<TcpStream>>,
+    options: Options,
+    front: bool,
+    /// Transmissão em andamento: a flag que a para e a thread que a executa.
+    running: Option<(Arc<AtomicBool>, thread::JoinHandle<()>)>,
+    fps: u32,
+    size: (u32, u32),
+}
+
+const SIM_MODES: [(u32, u32, bool); 3] =
+    [(1280, 720, true), (1920, 1080, true), (2560, 1440, false)];
+
+impl Phone {
+    fn send(&self, message: &Message) -> Result<(), SenderError> {
+        let frame = message.to_frame(0)?;
+        let mut socket = self
+            .socket
+            .lock()
+            .map_err(|_| io::Error::other("estado interno corrompido"))?;
+        frame.write_to(&mut *socket)?;
+        socket.flush()?;
+        Ok(())
+    }
+
+    fn streaming(&self) -> bool {
+        self.running.is_some()
+    }
+
+    fn send_capabilities(&self) -> Result<(), SenderError> {
+        self.send(&Message::Capabilities {
+            modes: SIM_MODES
+                .iter()
+                .map(|&(width, height, available)| CapabilityMode {
+                    width,
+                    height,
+                    available,
+                    max_fps: 30,
+                    reason: (!available).then(|| "sem codificador H.264 por hardware".to_string()),
+                })
+                .collect(),
+            fps_options: vec![15, 24, 30],
+            facing: if self.front {
+                Facing::Front
+            } else {
+                Facing::Back
+            },
+            can_switch: true,
+            streaming: self.streaming(),
+        })
+    }
+
+    fn send_profile_now(&self) -> Result<(), SenderError> {
+        let mut socket = self
+            .socket
+            .lock()
+            .map_err(|_| io::Error::other("estado interno corrompido"))?;
+        send_profile(
+            &mut *socket,
+            self.size.0,
+            self.size.1,
+            4000,
+            self.options.rotation,
+        )?;
+        socket.flush()?;
+        Ok(())
+    }
+
+    fn fail(&self, message: &str) -> Result<(), SenderError> {
+        self.send(&Message::Error {
+            code: ErrorCode::CommandFailed,
+            message: message.into(),
+        })
+    }
+
+    fn start(&mut self, width: u32, height: u32, fps: u32) -> Result<(), SenderError> {
+        if self.streaming() {
+            return self.fail("já está transmitindo");
+        }
+        if !SIM_MODES
+            .iter()
+            .any(|&(w, h, ok)| ok && w == width && h == height)
+        {
+            return self.fail("resolução indisponível neste aparelho");
+        }
+        self.size = (width, height);
+        self.fps = fps;
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut writer = SharedWriter {
+            socket: Arc::clone(&self.socket),
+            pending: Vec::new(),
+            stop: Arc::clone(&stop),
+        };
+        // O estado muda antes do vídeo, para o computador reiniciar a saída no tamanho certo.
+        let handle = {
+            let options = Options {
+                seconds: 3600,
+                ..self.options.clone()
+            };
+            thread::spawn(move || {
+                let mut shared = Shared::default();
+                if let Ok(mut child) =
+                    spawn_ffmpeg(&options, width, height, 4000, options.rotation, 3600)
+                {
+                    let _ = stream_video(&mut child, &mut writer, &mut shared);
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            })
+        };
+        self.running = Some((stop, handle));
+        self.send_profile_now()?;
+        self.send_capabilities()
+    }
+
+    fn stop(&mut self) -> Result<(), SenderError> {
+        if let Some((flag, handle)) = self.running.take() {
+            flag.store(true, Ordering::SeqCst);
+            let _ = handle.join();
+        }
+        self.send_capabilities()
+    }
+}
+
+/// Atende um cliente como um celular que **espera ordens**: só transmite depois de
+/// `stream.start`, para quando recebe `stream.stop` e obedece `fps.set` e `camera.switch`.
+/// Termina quando o cliente fecha a conexão ou manda `session.stop`.
+pub fn serve_controllable(stream: TcpStream, options: &Options) -> Result<(), SenderError> {
+    stream.set_nodelay(true)?;
+    let mut input = stream.try_clone()?;
+    let mut phone = Phone {
+        socket: Arc::new(Mutex::new(stream)),
+        options: options.clone(),
+        front: false,
+        running: None,
+        fps: 30,
+        size: options.profile.dimensions(),
+    };
+    phone.send(&Message::Hello {
+        device_name: "cdc-testsender".into(),
+        platform: Platform::Linux,
+        app_version: env!("CARGO_PKG_VERSION").into(),
+    })?;
+    phone.send_capabilities()?;
+
+    let resultado = loop {
+        let frame = match Frame::read_from(&mut input) {
+            Ok(Some(frame)) => frame,
+            Ok(None) => break Ok(()),
+            Err(e) if is_disconnect(&e) => break Ok(()),
+            Err(e) => break Err(e.into()),
+        };
+        if frame.kind != FrameType::Control {
+            continue;
+        }
+        let outcome = match Message::from_frame(&frame) {
+            Ok(Message::StreamStart { width, height, fps }) => phone.start(width, height, fps),
+            Ok(Message::StreamStop) => phone.stop(),
+            Ok(Message::FpsSet { fps }) => {
+                phone.fps = fps;
+                phone.send_profile_now()
+            }
+            Ok(Message::CameraSwitch { facing }) => {
+                phone.front = facing.map_or(!phone.front, |f| f == Facing::Front);
+                phone.send_capabilities()
+            }
+            Ok(Message::SessionStop) => break Ok(()),
+            _ => Ok(()),
+        };
+        if let Err(e) = outcome {
+            break Err(e);
+        }
+    };
+    let _ = phone.stop();
+    resultado
 }

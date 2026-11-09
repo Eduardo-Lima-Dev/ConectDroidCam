@@ -59,6 +59,10 @@ Frames de tipo 0 carregam um objeto JSON com o envelope:
 | `profile.list` | Celular | `profiles[]`: `profile`, `available`, `reason?` | Disponibilidade de cada perfil, com o motivo quando indisponível |
 | `profile.set` | Computador | `profile`, `bitrateKbps?` | Escolhe o perfil |
 | `profile.actual` | Celular | `width`, `height`, `fps`, `bitrateKbps`, `rotation?` | O que o celular realmente entrega. É reenviado quando o FPS ou a rotação mudam com a transmissão ligada |
+| `capabilities` | Celular | `modes[]` (`width`, `height`, `available`, `maxFps`, `reason?`), `fpsOptions[]`, `facing` (`front`, `back`), `canSwitch`, `streaming` | O que a câmera em uso oferece e o estado do celular. Vai logo após a conexão e de novo a cada mudança (transmissão ligada ou parada, câmera trocada) |
+| `stream.start` | Computador | `width`, `height`, `fps` | Manda o celular transmitir neste tamanho e FPS. Recusado com `error` `COMMAND_FAILED` se a resolução ou o FPS não existem ou se já transmite |
+| `stream.stop` | Computador | — | Manda o celular parar de transmitir, mantendo a conexão |
+| `fps.set` | Computador | `fps` | Muda o FPS com a transmissão ligada |
 | `audio.set` | Computador | `enabled` | Liga ou desliga o microfone |
 | `camera.switch` | Computador | `facing?` (`front`, `back`) | Troca de câmera; sem `facing`, alterna |
 | `keyframe.request` | Computador | — | Pede um IDR |
@@ -81,6 +85,15 @@ O receptor **não muda o tamanho do quadro de saída** durante a sessão, e nem 
 
 **Resolução real:** `profile.actual` é a fonte da verdade. A interface mostra o que ele informa, não o que foi pedido, e nunca reduz abaixo de 720p em silêncio.
 
+## 3.0 Quem comanda a transmissão
+
+O celular abre o servidor e anuncia-se na rede **assim que a prévia da câmera abre**, sem esperar uma transmissão. Ao conectar, o computador recebe `capabilities` com `streaming: false` e decide: `stream.start` liga o codificador; `stream.stop` o desliga sem derrubar a conexão; `fps.set` e `camera.switch` valem com a transmissão ligada. O botão do celular continua funcionando e os dois lados mostram o mesmo estado, porque toda mudança gera um novo `capabilities`.
+
+- Uma transmissão ligada por `stream.start` acaba sozinha quando o computador desconecta (ninguém assiste). Uma ligada pelo botão do celular continua.
+- Sem `stream.start`, o celular não envia `profile.actual` nem vídeo; o receptor ignora `profile.actual` com largura ou altura zero.
+- Trocar a resolução é parar e iniciar de novo; o receptor mantém o quadro de saída com o tamanho fixo, então a webcam virtual e o OBS não percebem.
+- `camera.switch` com a transmissão ligada só é aceito se a câmera nova oferece o tamanho e o FPS em uso; senão o celular responde `error` `COMMAND_FAILED` e nada muda.
+
 ## 3.1 Descoberta na rede
 
 O celular anuncia o servidor por mDNS enquanto transmite: serviço `_conectdroidcam._tcp`, nome `ConectDroidCam <modelo>`, porta `47821`, TXT `version` e `protocol`. O computador procura esse serviço e só lista celulares que tenham um endereço IPv4 utilizável. Se o anúncio falhar (algumas redes bloqueiam multicast), o app do celular diz o motivo e o computador ainda conecta pelo endereço digitado.
@@ -89,7 +102,7 @@ O celular anuncia o servidor por mDNS enquanto transmite: serviço `_conectdroid
 
 `error.code`, sempre em `SCREAMING_SNAKE_CASE`:
 
-`PERMISSION_DENIED_CAMERA` · `PERMISSION_DENIED_MIC` · `LAN_PERMISSION_DENIED` · `RECEIVER_NOT_FOUND` · `PAIRING_EXPIRED` · `AUTH_FAILED` · `UNSUPPORTED_RESOLUTION` · `CODEC_INCOMPATIBLE` · `NETWORK_INTERRUPTED` · `THERMAL_LIMIT` · `TLS_FINGERPRINT_MISMATCH` · `USB_TUNNEL_FAILED` · `VIRTUAL_CAMERA_UNAVAILABLE` · `DECODER_FAILED`
+`PERMISSION_DENIED_CAMERA` · `PERMISSION_DENIED_MIC` · `LAN_PERMISSION_DENIED` · `RECEIVER_NOT_FOUND` · `PAIRING_EXPIRED` · `AUTH_FAILED` · `UNSUPPORTED_RESOLUTION` · `CODEC_INCOMPATIBLE` · `NETWORK_INTERRUPTED` · `THERMAL_LIMIT` · `TLS_FINGERPRINT_MISMATCH` · `USB_TUNNEL_FAILED` · `VIRTUAL_CAMERA_UNAVAILABLE` · `DECODER_FAILED` · `COMMAND_FAILED`
 
 ## 5. Segurança (a implementar)
 

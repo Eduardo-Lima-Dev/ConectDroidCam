@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 cdc-core = { path = "../cdc-core" }
+cdc-protocol.workspace = true
 
 [lints]
 workspace = true

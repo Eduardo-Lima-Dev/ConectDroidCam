@@ -1,5 +1,6 @@
 //! Uso: cdc-testreceiver HOST:PORTA [--seconds N] [--v4l2 /dev/videoN] [--dump arquivo.h264]
 //!                       [--canvas auto|horizontal|vertical] [--size hd|fullhd|qhd] [--preview ARQUIVO.jpg] [--quiet]
+//!                       [--do SEGUNDOS:COMANDO]...   (comandos ao celular: start:1280x720@30, stop, fps:24, camera:front|back|toggle)
 //!        cdc-testreceiver --discover [SEGUNDOS]   (lista os celulares achados na rede)
 //!
 //! Ferramenta de validação sobre o `cdc-core`: conecta a um celular (ou ao `cdc-testsender`),
@@ -7,12 +8,51 @@
 //! virtual.
 
 use std::process::ExitCode;
+use std::thread;
 use std::time::Duration;
 
 use cdc_core::{
     Canvas, DeviceEvent, Discovery, OutputSize, SessionEvent, SessionOptions, StopHandle, connect,
     run,
 };
+
+/// Converte `start:1280x720@30`, `stop`, `fps:24` ou `camera:front` numa mensagem.
+fn parse_command(texto: &str) -> Result<cdc_protocol::Message, String> {
+    use cdc_protocol::{Facing, Message};
+    let (nome, valor) = texto.split_once(':').unwrap_or((texto, ""));
+    match nome {
+        "start" => {
+            let (tamanho, fps) = valor
+                .split_once('@')
+                .ok_or("use start:LARGURAxALTURA@FPS")?;
+            let (w, h) = tamanho
+                .split_once('x')
+                .ok_or("use start:LARGURAxALTURA@FPS")?;
+            let num = |t: &str| {
+                t.parse::<u32>()
+                    .map_err(|_| format!("número inválido: {t}"))
+            };
+            Ok(Message::StreamStart {
+                width: num(w)?,
+                height: num(h)?,
+                fps: num(fps)?,
+            })
+        }
+        "stop" => Ok(Message::StreamStop),
+        "fps" => Ok(Message::FpsSet {
+            fps: valor.parse().map_err(|_| "fps inválido".to_string())?,
+        }),
+        "camera" => Ok(Message::CameraSwitch {
+            facing: match valor {
+                "front" => Some(Facing::Front),
+                "back" => Some(Facing::Back),
+                "toggle" => None,
+                _ => return Err("use camera:front, camera:back ou camera:toggle".into()),
+            },
+        }),
+        outro => Err(format!("comando desconhecido: {outro}")),
+    }
+}
 
 const USO: &str = "uso: cdc-testreceiver HOST:PORTA [--seconds N] [--v4l2 DISPOSITIVO] [--dump ARQUIVO] [--canvas auto|horizontal|vertical] [--preview ARQUIVO.jpg] [--quiet]";
 
@@ -52,6 +92,7 @@ fn main() -> ExitCode {
     };
     let mut verbose = true;
     let mut preview_file: Option<String> = None;
+    let mut script: Vec<(u64, cdc_protocol::Message)> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = |name: &str| args.next().ok_or(format!("{name} precisa de um valor"));
@@ -97,6 +138,14 @@ fn main() -> ExitCode {
                 options.preview = true;
                 preview_file = Some(v);
             }),
+            "--do" => value("--do").and_then(|v| {
+                let (quando, comando) = v.split_once(':').ok_or("use SEGUNDOS:COMANDO")?;
+                let quando = quando
+                    .parse()
+                    .map_err(|_| "segundos inválidos".to_string())?;
+                script.push((quando, parse_command(comando)?));
+                Ok(())
+            }),
             "--quiet" => {
                 verbose = false;
                 Ok(())
@@ -126,6 +175,23 @@ fn main() -> ExitCode {
         }
     };
     let stop = StopHandle::new();
+    if !script.is_empty() {
+        let stop = stop.clone();
+        thread::spawn(move || {
+            let inicio = std::time::Instant::now();
+            script.sort_by_key(|(quando, _)| *quando);
+            for (quando, mensagem) in script {
+                if let Some(falta) = Duration::from_secs(quando).checked_sub(inicio.elapsed()) {
+                    thread::sleep(falta);
+                }
+                eprintln!("[{quando} s] enviando {mensagem:?}");
+                if let Err(e) = stop.send(&mensagem) {
+                    eprintln!("não consegui enviar: {e}");
+                    return;
+                }
+            }
+        });
+    }
     let resultado = run(stream, &options, &stop, |evento| match evento {
         SessionEvent::Hello {
             device_name,
@@ -149,6 +215,27 @@ fn main() -> ExitCode {
             "saída de vídeo: {canvas_width}x{canvas_height}, girada {rotation}°, em {}",
             device.as_deref().unwrap_or("nenhum dispositivo")
         ),
+        SessionEvent::Capabilities {
+            modes,
+            fps_options,
+            front,
+            can_switch,
+            streaming,
+        } => {
+            let disponiveis: Vec<String> = modes
+                .iter()
+                .filter(|m| m.available)
+                .map(|m| format!("{}x{}", m.width, m.height))
+                .collect();
+            eprintln!(
+                "celular: {} · câmera {} (troca: {}) · FPS {:?} · resoluções {}",
+                if streaming { "transmitindo" } else { "parado" },
+                if front { "frontal" } else { "traseira" },
+                if can_switch { "sim" } else { "não" },
+                fps_options,
+                disponiveis.join(", ")
+            );
+        }
         SessionEvent::Notice(texto) => eprintln!("aviso: {texto}"),
         SessionEvent::SenderError { code, message } => {
             eprintln!("erro do emissor: {code}: {message}");

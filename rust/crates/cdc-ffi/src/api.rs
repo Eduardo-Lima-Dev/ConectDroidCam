@@ -11,6 +11,8 @@ use cdc_core::{
     Sink, StopHandle,
 };
 
+use cdc_protocol::{Facing, Message};
+
 use crate::frb_generated::StreamSink;
 
 /// Um celular achado na rede.
@@ -114,6 +116,9 @@ pub enum ReceiverEventKind {
     Stats,
     /// Um quadro JPEG da prévia: `preview`.
     Preview,
+    /// O que o celular sabe fazer e seu estado: `modes`, `fps_options`, `streaming`,
+    /// `front` e `can_switch`.
+    Capabilities,
     /// O celular reportou um erro: `text` = código, `text2` = mensagem.
     SenderError,
     /// Aviso que não interrompe: `text`.
@@ -122,6 +127,17 @@ pub enum ReceiverEventKind {
     Ended,
     /// A sessão terminou por erro: `text` = explicação.
     Failed,
+}
+
+/// Uma resolução oferecida pelo celular.
+#[derive(Debug, Clone)]
+pub struct PhoneMode {
+    pub width: u32,
+    pub height: u32,
+    pub available: bool,
+    pub max_fps: u32,
+    /// Por que não está disponível; vazio quando está.
+    pub reason: String,
 }
 
 pub struct ReceiverEvent {
@@ -141,6 +157,13 @@ pub struct ReceiverEvent {
     pub frames: u64,
     /// Bytes de um quadro JPEG, só no evento `Preview`.
     pub preview: Vec<u8>,
+    /// Só em `Capabilities`.
+    pub modes: Vec<PhoneMode>,
+    pub fps_options: Vec<u32>,
+    pub streaming: bool,
+    /// A câmera em uso é a frontal.
+    pub front: bool,
+    pub can_switch: bool,
 }
 
 impl ReceiverEvent {
@@ -161,6 +184,11 @@ impl ReceiverEvent {
             stats_delay_ms: 0.0,
             frames: 0,
             preview: Vec::new(),
+            modes: Vec::new(),
+            fps_options: Vec::new(),
+            streaming: false,
+            front: false,
+            can_switch: false,
         }
     }
 }
@@ -212,6 +240,29 @@ impl From<SessionEvent> for ReceiverEvent {
             SessionEvent::Preview(jpeg) => Self {
                 preview: jpeg,
                 ..Self::new(ReceiverEventKind::Preview)
+            },
+            SessionEvent::Capabilities {
+                modes,
+                fps_options,
+                front,
+                can_switch,
+                streaming,
+            } => Self {
+                modes: modes
+                    .into_iter()
+                    .map(|m| PhoneMode {
+                        width: m.width,
+                        height: m.height,
+                        available: m.available,
+                        max_fps: m.max_fps,
+                        reason: m.reason.unwrap_or_default(),
+                    })
+                    .collect(),
+                fps_options,
+                front,
+                can_switch,
+                streaming,
+                ..Self::new(ReceiverEventKind::Capabilities)
             },
             SessionEvent::SenderError { code, message } => Self {
                 text: code,
@@ -361,6 +412,37 @@ pub fn disconnect_phone() {
     {
         stop.stop();
     }
+}
+
+/// Envia um comando ao celular da sessão em andamento. Devolve o motivo se não foi possível.
+fn command(message: Message) -> Option<String> {
+    let guard = SESSION.lock().ok()?;
+    match guard.as_ref() {
+        Some(stop) if !stop.is_stopped() => stop.send(&message).err().map(|e| e.to_string()),
+        _ => Some("não há conexão com o celular".into()),
+    }
+}
+
+/// Pede ao celular que comece a transmitir neste tamanho e FPS.
+pub fn phone_start_stream(width: u32, height: u32, fps: u32) -> Option<String> {
+    command(Message::StreamStart { width, height, fps })
+}
+
+/// Pede ao celular que pare de transmitir, mantendo a conexão.
+pub fn phone_stop_stream() -> Option<String> {
+    command(Message::StreamStop)
+}
+
+/// Muda o FPS com a transmissão ligada.
+pub fn phone_set_fps(fps: u32) -> Option<String> {
+    command(Message::FpsSet { fps })
+}
+
+/// Troca a câmera do celular: `Some(true)` frontal, `Some(false)` traseira, `None` alterna.
+pub fn phone_switch_camera(front: Option<bool>) -> Option<String> {
+    command(Message::CameraSwitch {
+        facing: front.map(|f| if f { Facing::Front } else { Facing::Back }),
+    })
 }
 
 /// `true` se o `ffmpeg` está instalado: sem ele não há como escrever na webcam virtual.

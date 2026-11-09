@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use cdc_protocol::{Frame, FrameType, Message, Platform, ProtocolError};
+use cdc_protocol::{CapabilityMode, Facing, Frame, FrameType, Message, Platform, ProtocolError};
 use thiserror::Error;
 
 use crate::filter::{Canvas, OutputSize, canvas_size, normalize_rotation, video_filter};
@@ -114,6 +114,16 @@ pub enum SessionEvent {
     Stats(Stats),
     /// Um quadro JPEG da prévia (cerca de 10 por segundo, 480 px de largura).
     Preview(Vec<u8>),
+    /// O que o celular sabe fazer e em que estado está (transmitindo ou não, qual câmera).
+    /// Chega logo após a conexão e a cada mudança.
+    Capabilities {
+        modes: Vec<CapabilityMode>,
+        fps_options: Vec<u32>,
+        /// A câmera em uso é a frontal.
+        front: bool,
+        can_switch: bool,
+        streaming: bool,
+    },
     /// O emissor reportou um erro.
     SenderError {
         code: String,
@@ -132,6 +142,8 @@ pub struct StopHandle {
 #[derive(Default)]
 struct StopInner {
     stopped: AtomicBool,
+    /// Conexão com o celular. Todas as escritas passam por aqui, com o `Mutex` seguro, para
+    /// que um comando de outra thread nunca se misture no meio de um frame da sessão.
     stream: Mutex<Option<TcpStream>>,
 }
 
@@ -148,6 +160,22 @@ impl StopHandle {
         {
             let _ = stream.shutdown(Shutdown::Both);
         }
+    }
+
+    /// Envia uma mensagem de controle ao celular, de qualquer thread. Falha se a sessão
+    /// ainda não começou ou já terminou.
+    pub fn send(&self, message: &Message) -> Result<(), SessionError> {
+        let frame = message.to_frame(0)?;
+        let mut guard = self
+            .inner
+            .stream
+            .lock()
+            .map_err(|_| io::Error::other("estado interno corrompido"))?;
+        let stream = guard
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "sem sessão ativa"))?;
+        frame.write_to(stream)?;
+        Ok(())
     }
 
     pub fn is_stopped(&self) -> bool {
@@ -197,11 +225,6 @@ fn is_disconnect(error: &io::Error) -> bool {
     )
 }
 
-fn send(stream: &mut TcpStream, message: &Message) -> Result<(), SessionError> {
-    message.to_frame(0)?.write_to(stream)?;
-    Ok(())
-}
-
 #[derive(Clone, Copy)]
 struct Profile {
     width: u32,
@@ -241,7 +264,6 @@ pub fn run(
 ) -> Result<Report, SessionError> {
     stream.set_nodelay(true)?;
     stop.attach(&stream)?;
-    let mut writer = stream.try_clone()?;
     let mut reader = BufReader::new(stream);
     let mut output = Output::new(&options.sink, &options.ffmpeg, options.preview)?;
 
@@ -250,17 +272,14 @@ pub fn run(
     } else {
         Platform::Linux
     };
-    send(
-        &mut writer,
-        &Message::Hello {
-            device_name: options.device_name.clone(),
-            platform,
-            app_version: env!("CARGO_PKG_VERSION").into(),
-        },
-    )?;
-    send(&mut writer, &Message::ProfileQuery)?;
+    stop.send(&Message::Hello {
+        device_name: options.device_name.clone(),
+        platform,
+        app_version: env!("CARGO_PKG_VERSION").into(),
+    })?;
+    stop.send(&Message::ProfileQuery)?;
     // O celular só começa a enviar vídeo útil num keyframe; pedir um logo acelera a prévia.
-    send(&mut writer, &Message::KeyframeRequest)?;
+    stop.send(&Message::KeyframeRequest)?;
 
     let started = Instant::now();
     let mut report = Report::default();
@@ -297,7 +316,7 @@ pub fn run(
                         fps,
                         bitrate_kbps,
                         rotation,
-                    } => {
+                    } if width > 0 && height > 0 => {
                         let rotation = normalize_rotation(rotation);
                         profile = Some(Profile {
                             width,
@@ -321,8 +340,35 @@ pub fn run(
                             &mut canvas_in_use,
                         );
                         if output.has_process() && !output.is_running_with(&filter) {
-                            send(&mut writer, &Message::KeyframeRequest)?;
+                            stop.send(&Message::KeyframeRequest)?;
                         }
+                    }
+                    // Celular parado: sem tamanho, não há o que mostrar.
+                    Message::ProfileActual { .. } => {}
+                    Message::Capabilities {
+                        modes,
+                        fps_options,
+                        facing,
+                        can_switch,
+                        streaming,
+                    } => {
+                        if !streaming && (feeding || profile.is_some()) {
+                            // A transmissão parou: fecha a saída de vídeo e espera a próxima.
+                            // O formato resolvido (`canvas_in_use`) continua, para a webcam
+                            // virtual não mudar de tamanho entre uma transmissão e outra.
+                            output.finish();
+                            feeding = false;
+                            profile = None;
+                            config = None;
+                            last_video = None;
+                        }
+                        on_event(SessionEvent::Capabilities {
+                            modes,
+                            fps_options,
+                            front: facing == Facing::Front,
+                            can_switch,
+                            streaming,
+                        });
                     }
                     Message::Error { code, message } => on_event(SessionEvent::SenderError {
                         code: format!("{code:?}"),
@@ -448,9 +494,9 @@ pub fn run(
     })();
 
     // Em qualquer saída, avisa o celular e fecha a saída de vídeo.
-    let _ = send(&mut writer, &Message::SessionStop);
+    let _ = stop.send(&Message::SessionStop);
     output.finish();
-    let _ = writer.shutdown(Shutdown::Both);
+    stop.stop();
     resultado?;
 
     report.seconds = started.elapsed().as_secs_f64();
