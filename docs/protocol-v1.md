@@ -58,7 +58,7 @@ Frames de tipo 0 carregam um objeto JSON com o envelope:
 | `profile.query` | Computador | — | Pergunta quais perfis o celular suporta |
 | `profile.list` | Celular | `profiles[]`: `profile`, `available`, `reason?` | Disponibilidade de cada perfil, com o motivo quando indisponível |
 | `profile.set` | Computador | `profile`, `bitrateKbps?` | Escolhe o perfil |
-| `profile.actual` | Celular | `width`, `height`, `fps`, `bitrateKbps` | O que o celular realmente entrega |
+| `profile.actual` | Celular | `width`, `height`, `fps`, `bitrateKbps` | O que o celular realmente entrega. É reenviado quando o FPS muda com a transmissão ligada |
 | `audio.set` | Computador | `enabled` | Liga ou desliga o microfone |
 | `camera.switch` | Computador | `facing?` (`front`, `back`) | Troca de câmera; sem `facing`, alterna |
 | `keyframe.request` | Computador | — | Pede um IDR |
@@ -70,6 +70,10 @@ Frames de tipo 0 carregam um objeto JSON com o envelope:
 `profile.query` não estava na lista inicial do plano; foi acrescentado para o computador poder perguntar os perfis sem depender de o celular enviá-los por conta própria.
 
 **Perfis:** `hd` (1280×720), `fullHd` (1920×1080), `qhd` (2560×1440). O nome exibido do último é sempre `2K (2560×1440)`. Bitrates iniciais de projeto, em kb/s: 2000–4000, 4000–8000 e 6000–12000. São pontos de partida a validar em aparelhos reais.
+
+**Outras resoluções:** o celular oferece ao usuário qualquer resolução que a câmera e o codificador por hardware aceitem acima do piso de 720p (por exemplo 4K ou 1920×1440), não só os três perfis nomeados. Elas aparecem em `profile.actual`, com a largura e a altura reais. Nesta versão do protocolo, `profile.list` e `profile.set` conhecem apenas `hd`, `fullHd` e `qhd`; estender a escolha de resolução ao computador exigirá um campo para tamanhos arbitrários.
+
+**FPS:** o celular escolhe o FPS (de 15 a 30 neste aparelho) e pode mudá-lo durante a transmissão, sem reiniciar câmera nem codificador. Como o codificador continua configurado para o FPS inicial, o bitrate por frame sobe quando o FPS cai.
 
 **Resolução real:** `profile.actual` é a fonte da verdade. A interface mostra o que ele informa, não o que foi pedido, e nunca reduz abaixo de 720p em silêncio.
 

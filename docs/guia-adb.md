@@ -76,6 +76,22 @@ A porta de conexão **muda** quando você desliga e liga a Depuração por Wi-Fi
 
 O `adb mdns services` pode continuar mostrando a porta antiga por um tempo. Confie no número que está na tela do celular.
 
+### 4.4 A depuração por Wi-Fi fecha sozinha
+
+Isso é do próprio Android: a Depuração por Wi-Fi **desliga** quando o celular sai da rede ou troca de Wi-Fi, ao reiniciar, e a porta sorteada deixa de valer. Sem acesso root, o Android não oferece uma opção para mantê-la sempre ativa. O que ajuda, do mais ao menos estável:
+
+1. **Cabo USB.** É o único modo que não cai sozinho. Se for desenvolver por horas, use-o.
+2. **Porta fixa com `adb tcpip`.** Com o celular já conectado (por USB ou pela própria Depuração por Wi-Fi), rode:
+
+   ```sh
+   adb tcpip 5555
+   adb connect 192.168.0.7:5555
+   ```
+
+   A porta passa a ser sempre a **5555**, não precisa de código de pareamento e vale até o celular **reiniciar**. O ADB continua exigindo que o computador seja autorizado pela janela "Permitir depuração USB?". Dois cuidados: o IP do celular pode mudar (reserve um IP fixo para ele no roteador) e, depois de reiniciar, é preciso repetir o `adb tcpip 5555` com o celular ligado ao cabo. Para voltar ao modo normal: `adb usb`.
+3. **Deixar a tela ligada durante o teste.** Em Opções do desenvolvedor, ative **Manter ativo** (a tela não apaga enquanto carrega). Tela apagada e economia de energia agressiva são causas comuns de queda.
+4. **Chave que não expira.** Em versões recentes do Android há, em Opções do desenvolvedor, uma opção para **desativar o tempo limite de autorização do ADB**; sem ela, a autorização pode ser revogada depois de alguns dias e o pareamento precisa ser refeito. O nome exato varia por fabricante.
+
 ## 5. Rodar o app no celular
 
 Com o celular aparecendo no `adb devices`:
@@ -123,7 +139,7 @@ cargo run -p cdc-testreceiver -- 127.0.0.1:47821 --seconds 20
 | `failed to authenticate` | O pareamento não foi feito ou foi perdido: refaça a seção 4.1. |
 | O celular aparece duas vezes (um deles com `(2)`) | É o mesmo aparelho em duas conexões. Use `adb -t <id> ...` com o `transport_id` de `adb devices -l`, ou `adb disconnect` e conecte só uma. |
 | Pareia, mas não conecta | A rede pode isolar os aparelhos (comum em "rede de convidados"). Use a rede principal ou o cabo USB. |
-| A conexão por Wi-Fi cai sozinha | A tela apagando ou a economia de bateria podem derrubá-la. Deixe a tela ligada durante o teste e, se puder, tire o app de configurações da otimização de bateria. |
+| A conexão por Wi-Fi cai sozinha | Veja a seção 4.4: o Android desliga a Depuração por Wi-Fi ao trocar de rede ou reiniciar. Use o cabo USB ou a porta fixa com `adb tcpip 5555`. |
 | `adb pair` fica sem resposta | Confirme que a janela de pareamento ainda está aberta e use o IP:porta e o código **dessa janela**. |
 
 ### Específico do macOS
