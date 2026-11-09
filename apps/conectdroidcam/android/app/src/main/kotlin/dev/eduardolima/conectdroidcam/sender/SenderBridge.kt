@@ -21,10 +21,11 @@ import java.net.NetworkInterface
  *
  * MethodChannel `cdc/sender`: hasCameraPermission, requestCameraPermission,
  * listModes, localAddresses, startPreview, stopPreview, startStreaming(width, height, fps),
- * setFps(fps), switchCamera(front), stopStreaming.
+ * setFps(fps), switchCamera(front), stopStreaming, confirmPairing(accept), listPaired, unpair(fingerprint).
  *
  * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | discovery | error
- * | remote (o computador ligou, desligou ou mudou a transmissão) | camera (o computador trocou a câmera).
+ * | remote (o computador ligou, desligou ou mudou a transmissão) | camera (o computador trocou a câmera)
+ * | pairing (um computador pede pareamento: `code`, `computer`) | pairingEnded (`paired`, `computer`, `reason`).
  */
 class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     MethodChannel.MethodCallHandler,
@@ -42,6 +43,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     /** A transmissão foi ligada por ordem do computador: ela acaba quando ele desconecta. */
     private var startedByRemote = false
     private val advertiser = NsdAdvertiser(activity)
+    private val security = PhoneSecurity(activity)
     private var pendingPermission: MethodChannel.Result? = null
     private var statsTask: Runnable? = null
     private var lastCounters: StreamServer.Counters? = null
@@ -84,6 +86,23 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                 )
                 "setFps" -> setFps(call.argument<Int>("fps"), result)
                 "switchCamera" -> switchCamera(call.argument<Boolean>("front"), result)
+                "confirmPairing" -> {
+                    server?.pairingDecision(call.argument<Boolean>("accept") == true)
+                    result.success(null)
+                }
+                "listPaired" -> result.success(
+                    security.store.list().map {
+                        mapOf("fingerprint" to it.fingerprint, "name" to it.name, "since" to it.since)
+                    },
+                )
+                "unpair" -> {
+                    val fingerprint = call.argument<String>("fingerprint")
+                    if (fingerprint != null) {
+                        security.store.remove(fingerprint)
+                        server?.disconnectComputer(fingerprint)
+                    }
+                    result.success(null)
+                }
                 "stopStreaming" -> {
                     stopStreaming()
                     result.success(null)
@@ -329,7 +348,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
      */
     private fun startListening() {
         if (server != null) return
-        val newServer = StreamServer(PORT, APP_VERSION, this)
+        val newServer = StreamServer(PORT, APP_VERSION, security, this)
         try {
             newServer.start()
         } catch (e: Exception) {
@@ -509,6 +528,20 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                 stopStreaming()
                 notifyRemoteState()
             }
+        }
+    }
+
+    override fun onPairingRequest(code: String, computerName: String) {
+        main.post {
+            events?.success(mapOf("event" to "pairing", "code" to code, "computer" to computerName))
+        }
+    }
+
+    override fun onPairingEnded(paired: Boolean, computerName: String, reason: String?) {
+        main.post {
+            events?.success(
+                mapOf("event" to "pairingEnded", "paired" to paired, "computer" to computerName, "reason" to reason),
+            )
         }
     }
 
