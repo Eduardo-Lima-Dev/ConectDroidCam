@@ -22,7 +22,8 @@ class ConectDroidCamApp extends StatelessWidget {
   ThemeData _theme(Brightness brightness) => ThemeData(
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF14B8A6),
+      // Verde do anel da logo.
+      seedColor: const Color(0xFF62F713),
       brightness: brightness,
     ),
   );

@@ -58,6 +58,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Logo e imagens da marca, geradas por tools/branding/gerar_icones.py.
+  assets:
+    - assets/branding/
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

@@ -10,7 +10,16 @@ import 'features/sender/fake_sender_platform.dart';
 
 final androidOnly = TargetPlatformVariant.only(TargetPlatform.android);
 
-Future<FakeSenderPlatform> pumpApp(WidgetTester tester) async {
+/// Abre o app numa tela alta, como a de um celular: o painel de controle é uma lista
+/// e só constrói o que está à vista, então numa tela baixa o FPS ficaria fora.
+Future<FakeSenderPlatform> pumpApp(
+  WidgetTester tester, {
+  Size size = const Size(1200, 3000),
+  double pixelRatio = 2,
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = pixelRatio;
+  addTearDown(tester.view.reset);
   // A tela cheia chama o sistema para esconder as barras; nos testes não há sistema.
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
     SystemChannels.platform,
@@ -229,11 +238,7 @@ void main() {
   testWidgets(
     'em retrato, a tela se reorganiza em coluna sem estourar',
     (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 2.75;
-      addTearDown(tester.view.reset);
-
-      await pumpApp(tester);
+      await pumpApp(tester, size: const Size(1080, 2400), pixelRatio: 2.75);
 
       expect(find.text('Iniciar transmissão'), findsOneWidget);
       expect(tester.takeException(), isNull);

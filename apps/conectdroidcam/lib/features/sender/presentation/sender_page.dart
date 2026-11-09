@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/sender_controller.dart';
+import '../../../shared/widgets/brand_logo.dart';
 import '../domain/sender_models.dart';
 
 /// Tela do celular: prévia da câmera, escolha da resolução e controle da transmissão.
@@ -87,6 +88,8 @@ class _Message extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const BrandLogo(size: 88),
+              const SizedBox(height: 20),
               if (icon == null)
                 const SizedBox.square(
                   dimension: 32,
@@ -386,7 +389,15 @@ class _ControlPanel extends ConsumerWidget {
     return ListView(
       shrinkWrap: true,
       children: [
-        Text('ConectDroidCam', style: theme.textTheme.titleLarge),
+        Row(
+          children: [
+            const BrandLogo(size: 36),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('ConectDroidCam', style: theme.textTheme.titleLarge),
+            ),
+          ],
+        ),
         const SizedBox(height: 4),
         _StatusLine(state: state),
         const SizedBox(height: 12),
@@ -405,6 +416,15 @@ class _ControlPanel extends ConsumerWidget {
             icon: const Icon(Icons.play_circle_outline),
             label: const Text('Iniciar transmissão'),
           ),
+        const SizedBox(height: 8),
+        // O aviso fica junto do botão, visível antes de transmitir, e não no fim do painel.
+        Text(
+          'Esta versão ainda não tem pareamento nem criptografia: '
+          'use apenas em uma rede em que você confia.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
         const SizedBox(height: 20),
         Text('Resolução', style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
@@ -455,14 +475,6 @@ class _ControlPanel extends ConsumerWidget {
         ],
         const SizedBox(height: 16),
         if (state.isStreaming) _ConnectionInfo(state: state),
-        const SizedBox(height: 16),
-        Text(
-          'Esta versão ainda não tem pareamento nem criptografia: '
-          'use apenas em uma rede em que você confia.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
       ],
     );
   }
