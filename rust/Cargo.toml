@@ -1,6 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/cdc-protocol", "crates/cdc-testsender"]
+members = [
+    "crates/cdc-protocol",
+    "crates/cdc-testsender",
+    "crates/cdc-testreceiver",
+]
 
 [workspace.package]
 version = "0.1.0"

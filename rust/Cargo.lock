@@ -12,6 +12,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cdc-testreceiver"
+version = "0.1.0"
+dependencies = [
+ "cdc-protocol",
+ "cdc-testsender",
+ "thiserror",
+]
+
+[[package]]
 name = "cdc-testsender"
 version = "0.1.0"
 dependencies = [

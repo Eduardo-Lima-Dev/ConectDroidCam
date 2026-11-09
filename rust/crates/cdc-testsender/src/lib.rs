@@ -7,8 +7,11 @@
 pub mod annexb;
 
 use std::io::{self, BufWriter, Read, Write};
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream};
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use cdc_protocol::{
     FLAG_KEYFRAME, Frame, FrameType, Message, Platform, ProtocolError, VideoProfile,
@@ -71,10 +74,30 @@ pub fn serve_connection(stream: TcpStream, options: &Options) -> Result<Summary,
     .write_to(&mut out)?;
     out.flush()?;
 
+    // Drena o que o cliente enviar. Fechar um socket com dados não lidos faz o TCP
+    // responder com RST, e o cliente perderia os últimos frames.
+    let (drained_tx, drained_rx) = mpsc::channel();
+    let drain = {
+        let mut input = out.get_ref().try_clone()?;
+        thread::spawn(move || {
+            while let Ok(Some(_)) = Frame::read_from(&mut input) {}
+            let _ = drained_tx.send(());
+        })
+    };
+
     let mut child = spawn_ffmpeg(options, width, height, bitrate)?;
     let result = stream_video(&mut child, &mut out);
     let _ = child.kill();
     let _ = child.wait();
+
+    // Fechamento gracioso: encerra a escrita e dá até 2 s para o cliente fechar. Passado
+    // o prazo, fecha tudo à força, o que também desbloqueia a thread que lê.
+    let _ = out.flush();
+    let socket = out.get_ref();
+    let _ = socket.shutdown(Shutdown::Write);
+    let _ = drained_rx.recv_timeout(Duration::from_secs(2));
+    let _ = socket.shutdown(Shutdown::Both);
+    let _ = drain.join();
     result
 }
 
@@ -121,6 +144,8 @@ fn stream_video<W: Write>(child: &mut Child, out: &mut W) -> Result<Summary, Sen
     let mut splitter = AccessUnitSplitter::new();
     let mut summary = Summary::default();
     let mut config_sent = false;
+    // Início do relógio de envio: o primeiro frame fixa o ritmo dos seguintes.
+    let mut epoch: Option<Instant> = None;
     let mut chunk = vec![0u8; 64 * 1024];
 
     loop {
@@ -138,6 +163,12 @@ fn stream_video<W: Write>(child: &mut Child, out: &mut W) -> Result<Summary, Sen
             }
             let keyframe = is_keyframe(&unit);
             let pts = summary.video_frames * 1_000_000 / u64::from(FPS);
+            // O `-re` do ffmpeg não limita a fonte lavfi, então o ritmo de tempo real é feito aqui:
+            // cada frame só sai no instante do seu pts, como um celular de verdade.
+            let target = *epoch.get_or_insert_with(Instant::now) + Duration::from_micros(pts);
+            if let Some(wait) = target.checked_duration_since(Instant::now()) {
+                thread::sleep(wait);
+            }
             let flags = if keyframe { FLAG_KEYFRAME } else { 0 };
             if let Err(e) = Frame::new(FrameType::Video, flags, pts, unit).write_to(out) {
                 return if is_disconnect(&e) {
