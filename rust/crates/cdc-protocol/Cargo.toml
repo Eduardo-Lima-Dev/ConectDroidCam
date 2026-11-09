@@ -1,0 +1,15 @@
+[package]
+name = "cdc-protocol"
+description = "Frames binarios e mensagens de controle do protocolo ConectDroidCam v1"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
