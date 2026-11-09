@@ -1,30 +1,47 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+import 'package:conectdroidcam/app/app.dart';
+import 'package:conectdroidcam/features/sender/application/sender_controller.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:conectdroidcam/main.dart';
+import 'features/sender/fake_sender_platform.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets(
+    'no Android, mostra os perfis e o aviso de segurança',
+    (tester) async {
+      final platform = FakeSenderPlatform()..permissionGranted = true;
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [senderPlatformProvider.overrideWithValue(platform)],
+          child: const ConectDroidCamApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      expect(find.text('HD (1280×720)'), findsOneWidget);
+      expect(find.text('Full HD (1920×1080)'), findsOneWidget);
+      // O 2K sempre aparece com a resolução, e o motivo quando indisponível.
+      expect(find.text('2K (2560×1440)'), findsOneWidget);
+      expect(find.text('a câmera não oferece 2560×1440'), findsOneWidget);
+      expect(find.text('Iniciar transmissão'), findsOneWidget);
+      expect(
+        find.textContaining('use apenas em uma rede em que você confia'),
+        findsOneWidget,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
-  });
+  testWidgets(
+    'no computador, mostra a tela provisória do receptor',
+    (tester) async {
+      await tester.pumpWidget(const ProviderScope(child: ConectDroidCamApp()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Receptor em desenvolvimento'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.linux),
+  );
 }
