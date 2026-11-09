@@ -18,7 +18,7 @@ import io.flutter.view.TextureRegistry
 
 /**
  * Camera2 com duas saídas: a prévia (textura do Flutter, em resolução baixa) e,
- * durante a transmissão, a superfície do codificador (na resolução do perfil).
+ * durante a transmissão, a superfície do codificador (na resolução escolhida).
  *
  * Callbacks chegam na thread da câmera; quem chama é responsável por voltar à
  * thread principal quando precisar.
@@ -33,6 +33,8 @@ class CameraController(
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     val cameraId: String = pickCameraId()
     private val characteristics = manager.getCameraCharacteristics(cameraId)
+    private val aeRanges: Array<Range<Int>> =
+        characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: emptyArray()
 
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
@@ -43,6 +45,10 @@ class CameraController(
     private var encoderSurface: Surface? = null
     private var preview: Preview? = null
 
+    /** FPS que a câmera deve produzir. Vale para a próxima sessão e para a atual (veja [setFps]). */
+    @Volatile
+    var targetFps: Int = DEFAULT_FPS
+
     private fun pickCameraId(): String {
         val ids = manager.cameraIdList
         return ids.firstOrNull {
@@ -51,30 +57,44 @@ class CameraController(
         } ?: ids.firstOrNull() ?: throw IllegalStateException("Este aparelho não tem câmera")
     }
 
+    private fun streamMap() = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+
     /** Tamanhos que a câmera entrega para um codificador. */
     fun encoderSizes(): List<Size> {
-        val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return emptyList()
+        val map = streamMap() ?: return emptyList()
         val sizes = map.getOutputSizes(MediaCodec::class.java)
             ?: map.getOutputSizes(SurfaceTexture::class.java)
         return sizes?.toList() ?: emptyList()
     }
 
+    /** FPS máximo que a câmera sustenta no tamanho, segundo a duração mínima de frame. */
+    fun maxFps(size: Size): Int {
+        val map = streamMap() ?: return DEFAULT_FPS
+        val nanos = runCatching { map.getOutputMinFrameDuration(MediaCodec::class.java, size) }
+            .getOrElse { map.getOutputMinFrameDuration(SurfaceTexture::class.java, size) }
+        return if (nanos > 0) (1_000_000_000.0 / nanos).toInt() else DEFAULT_FPS
+    }
+
+    /** FPS fixos que a câmera aceita no modo normal, de [MIN_FPS_OPTION] até [DEFAULT_FPS]. */
+    fun fixedFpsOptions(): List<Int> =
+        aeRanges
+            .filter { it.lower == it.upper && it.upper in MIN_FPS_OPTION..DEFAULT_FPS }
+            .map { it.upper }
+            .distinct()
+            .sorted()
+
     private fun choosePreviewSize(): Size {
-        val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-        val sizes = map?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
+        val sizes = streamMap()?.getOutputSizes(SurfaceTexture::class.java)?.toList() ?: emptyList()
         val sixteenNine = sizes.filter { it.width <= 1280 && it.width * 9 == it.height * 16 }
         return sixteenNine.maxByOrNull { it.width * it.height }
             ?: sizes.filter { it.width <= 1280 }.maxByOrNull { it.width * it.height }
             ?: Size(640, 480)
     }
 
-    private fun chooseFpsRange(): Range<Int>? {
-        val ranges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
-            ?: return null
-        // Prefere 30 fixo; senão, o intervalo que chega a 30 com o menor piso possível acima.
-        return ranges.filter { it.upper == STREAM_FPS }.maxByOrNull { it.lower }
-            ?: ranges.filter { it.upper >= STREAM_FPS }.minByOrNull { it.upper }
-    }
+    private fun fpsRangeFor(fps: Int): Range<Int>? =
+        aeRanges.firstOrNull { it.lower == fps && it.upper == fps }
+            ?: aeRanges.filter { it.upper == fps }.maxByOrNull { it.lower }
+            ?: aeRanges.filter { it.upper >= fps }.minByOrNull { it.upper }
 
     @SuppressLint("MissingPermission")
     fun startPreview(onResult: (Result<Preview>) -> Unit) {
@@ -144,6 +164,41 @@ class CameraController(
         rebuildSession(onResult)
     }
 
+    /**
+     * Muda o FPS com a câmera ligada, só trocando o pedido repetido: não reinicia a sessão
+     * nem o codificador, então a imagem não pisca e o cliente não percebe corte.
+     */
+    fun setFps(fps: Int, onResult: (Result<Unit>) -> Unit) {
+        targetFps = fps
+        val camera = device
+        val active = session
+        val worker = handler
+        // Sem sessão aberta, o valor novo é aplicado quando ela abrir.
+        if (camera == null || active == null || worker == null) return onResult(Result.success(Unit))
+        worker.post {
+            try {
+                applyRequest(camera, active)
+                onResult(Result.success(Unit))
+            } catch (e: Exception) {
+                onResult(Result.failure(e))
+            }
+        }
+    }
+
+    private fun applyRequest(camera: CameraDevice, active: CameraCaptureSession) {
+        val surfaces = listOfNotNull(previewSurface, encoderSurface)
+        val template = if (encoderSurface != null) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW
+        val request = camera.createCaptureRequest(template).apply {
+            surfaces.forEach { addTarget(it) }
+            val afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
+            if (afModes?.contains(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO) == true) {
+                set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+            }
+            fpsRangeFor(targetFps)?.let { set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it) }
+        }.build()
+        active.setRepeatingRequest(request, null, handler)
+    }
+
     @Suppress("DEPRECATION")
     private fun rebuildSession(onResult: (Result<Unit>) -> Unit) {
         val camera = device ?: return onResult(Result.failure(IllegalStateException("câmera fechada")))
@@ -155,20 +210,7 @@ class CameraController(
                     override fun onConfigured(configured: CameraCaptureSession) {
                         session = configured
                         try {
-                            val template = if (encoderSurface != null) {
-                                CameraDevice.TEMPLATE_RECORD
-                            } else {
-                                CameraDevice.TEMPLATE_PREVIEW
-                            }
-                            val request = camera.createCaptureRequest(template).apply {
-                                surfaces.forEach { addTarget(it) }
-                                val afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
-                                if (afModes?.contains(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO) == true) {
-                                    set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
-                                }
-                                chooseFpsRange()?.let { set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it) }
-                            }.build()
-                            configured.setRepeatingRequest(request, null, handler)
+                            applyRequest(camera, configured)
                             onResult(Result.success(Unit))
                         } catch (e: Exception) {
                             onResult(Result.failure(e))

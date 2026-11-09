@@ -9,11 +9,14 @@ import '../domain/sender_models.dart';
 abstract interface class SenderPlatform {
   Future<bool> hasCameraPermission();
   Future<bool> requestCameraPermission();
-  Future<List<ProfileAvailability>> listProfiles();
+  Future<SenderCapabilities> listModes();
   Future<List<LocalAddress>> localAddresses();
   Future<PreviewInfo> startPreview();
   Future<void> stopPreview();
-  Future<StreamInfo> startStreaming(VideoProfile profile);
+  Future<StreamInfo> startStreaming(VideoMode mode, int fps);
+
+  /// Muda o FPS com a transmissão ligada, sem reiniciar câmera nem codificador.
+  Future<void> setFps(int fps);
   Future<void> stopStreaming();
   Stream<SenderEvent> get events;
 }
@@ -54,17 +57,23 @@ class ChannelSenderPlatform implements SenderPlatform {
       _call<bool>('requestCameraPermission');
 
   @override
-  Future<List<ProfileAvailability>> listProfiles() async {
-    final raw = await _call<List<Object?>>('listProfiles');
-    return [
-      for (final item in raw.cast<Map<Object?, Object?>>())
-        if (VideoProfile.fromId(item['profile']! as String) case final profile?)
-          ProfileAvailability(
-            profile: profile,
+  Future<SenderCapabilities> listModes() async {
+    final raw = await _call<Map<Object?, Object?>>('listModes');
+    final modes = (raw['modes']! as List<Object?>)
+        .cast<Map<Object?, Object?>>();
+    final fps = (raw['fpsOptions']! as List<Object?>).cast<int>();
+    return SenderCapabilities(
+      modes: [
+        for (final item in modes)
+          ModeAvailability(
+            mode: VideoMode(item['width']! as int, item['height']! as int),
             available: item['available']! as bool,
             reason: item['reason'] as String?,
+            maxFps: (item['maxFps'] as int?) ?? 30,
           ),
-    ];
+      ],
+      fpsOptions: fps.isEmpty ? const [30] : fps,
+    );
   }
 
   @override
@@ -95,19 +104,22 @@ class ChannelSenderPlatform implements SenderPlatform {
   Future<void> stopPreview() => _call<void>('stopPreview');
 
   @override
-  Future<StreamInfo> startStreaming(VideoProfile profile) async {
+  Future<StreamInfo> startStreaming(VideoMode mode, int fps) async {
     final raw = await _call<Map<Object?, Object?>>('startStreaming', {
-      'profile': profile.id,
+      'width': mode.width,
+      'height': mode.height,
+      'fps': fps,
     });
     return StreamInfo(
-      profile: profile,
-      width: raw['width']! as int,
-      height: raw['height']! as int,
+      mode: VideoMode(raw['width']! as int, raw['height']! as int),
       fps: raw['fps']! as int,
       bitrateKbps: raw['bitrateKbps']! as int,
       port: raw['port']! as int,
     );
   }
+
+  @override
+  Future<void> setFps(int fps) => _call<void>('setFps', {'fps': fps});
 
   @override
   Future<void> stopStreaming() => _call<void>('stopStreaming');

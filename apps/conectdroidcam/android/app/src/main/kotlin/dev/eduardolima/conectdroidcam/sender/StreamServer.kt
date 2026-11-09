@@ -55,10 +55,23 @@ class StreamServer(
 
     private data class StreamInfo(val width: Int, val height: Int, val fps: Int, val bitrateKbps: Int)
 
-    fun setStream(profile: Profile) {
-        info = StreamInfo(profile.width, profile.height, STREAM_FPS, profile.bitrateKbps)
+    fun setStream(width: Int, height: Int, fps: Int, bitrateKbps: Int) {
+        info = StreamInfo(width, height, fps, bitrateKbps)
         videoConfig = null
         basePtsUs = -1L
+    }
+
+    /** O FPS mudou com a transmissão ligada: avisa o cliente com um novo `profile.actual`. */
+    fun updateFps(fps: Int) {
+        info = info.copy(fps = fps)
+        client?.enqueueControl(profileActualFrame())
+    }
+
+    private fun profileActualFrame() = Protocol.control("profile.actual") {
+        put("width", info.width)
+        put("height", info.height)
+        put("fps", info.fps)
+        put("bitrateKbps", info.bitrateKbps)
     }
 
     fun setProfiles(list: List<Map<String, Any?>>) {
@@ -135,14 +148,7 @@ class StreamServer(
                     put("appVersion", appVersion)
                 },
             )
-            enqueueControl(
-                Protocol.control("profile.actual") {
-                    put("width", info.width)
-                    put("height", info.height)
-                    put("fps", info.fps)
-                    put("bitrateKbps", info.bitrateKbps)
-                },
-            )
+            enqueueControl(profileActualFrame())
             videoConfig?.let { enqueueControl(Protocol.Frame(Protocol.TYPE_VIDEO_CONFIG, 0, 0, it)) }
             listener.onClientConnected(peer)
             listener.onKeyframeNeeded()

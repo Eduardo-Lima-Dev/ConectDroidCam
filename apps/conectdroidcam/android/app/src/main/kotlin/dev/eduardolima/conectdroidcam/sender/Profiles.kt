@@ -5,19 +5,39 @@ import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Build
 import android.util.Size
+import kotlin.math.roundToInt
 
-/** Os três perfis do protocolo, com os bitrates iniciais de projeto (ponto médio da faixa). */
-enum class Profile(val id: String, val width: Int, val height: Int, val bitrateKbps: Int) {
-    HD("hd", 1280, 720, 3_000),
-    FULL_HD("fullHd", 1920, 1080, 6_000),
-    QHD("qhd", 2560, 1440, 9_000);
+/** FPS padrão e teto: o modo normal da câmera não passa de 30 FPS neste aparelho. */
+const val DEFAULT_FPS = 30
 
-    companion object {
-        fun fromId(id: String): Profile? = entries.firstOrNull { it.id == id }
+/** Menor FPS oferecido ao usuário. */
+const val MIN_FPS_OPTION = 15
+
+/** Piso de 720p: nada abaixo disso é oferecido (lado maior ≥ 1280 e lado menor ≥ 720). */
+private const val MIN_LONG_EDGE = 1280
+private const val MIN_SHORT_EDGE = 720
+
+/** Perfis nomeados do protocolo v1 e seus tamanhos. */
+val NAMED_PROFILES = listOf(
+    "hd" to Size(1280, 720),
+    "fullHd" to Size(1920, 1080),
+    "qhd" to Size(2560, 1440),
+)
+
+/**
+ * Bitrate de vídeo inicial em kb/s. Os três perfis nomeados usam o ponto médio da faixa
+ * de projeto; os demais, cerca de 0,1 bit por pixel a 30 FPS, entre 1,5 e 20 Mb/s.
+ * São pontos de partida a validar em aparelhos reais, não garantias de qualidade.
+ */
+fun bitrateFor(width: Int, height: Int): Int = when {
+    width == 1280 && height == 720 -> 3_000
+    width == 1920 && height == 1080 -> 6_000
+    width == 2560 && height == 1440 -> 9_000
+    else -> {
+        val kbps = width.toDouble() * height * 30 * 0.1 / 1000
+        ((kbps / 500).roundToInt() * 500).coerceIn(1_500, 20_000)
     }
 }
-
-const val STREAM_FPS = 30
 
 object CodecSupport {
     private fun isHardware(info: MediaCodecInfo): Boolean =
@@ -27,8 +47,8 @@ object CodecSupport {
             !info.name.startsWith("OMX.google.") && !info.name.startsWith("c2.android.")
         }
 
-    /** Codificador H.264 por hardware que aceita o tamanho a 30 FPS, ou `null`. */
-    fun findEncoder(width: Int, height: Int, fps: Int = STREAM_FPS): MediaCodecInfo? {
+    /** Codificador H.264 por hardware que aceita o tamanho no FPS pedido, ou `null`. */
+    fun findEncoder(width: Int, height: Int, fps: Int = DEFAULT_FPS): MediaCodecInfo? {
         val infos = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
         return infos.firstOrNull { info ->
             info.isEncoder &&
@@ -58,22 +78,48 @@ object CodecSupport {
             .isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
     }.getOrDefault(false)
 
-    /** Disponibilidade de cada perfil, com o motivo em português quando não dá. */
-    fun availability(cameraSizes: List<Size>): List<Map<String, Any?>> =
-        Profile.entries.map { profile ->
-            val cameraOk = cameraSizes.any { it.width == profile.width && it.height == profile.height }
-            val reason = when {
-                !cameraOk -> "a câmera não oferece ${profile.width}×${profile.height}"
-                findEncoder(profile.width, profile.height) == null ->
-                    "sem codificador H.264 por hardware para ${profile.width}×${profile.height} a $STREAM_FPS FPS"
-                else -> null
+    /**
+     * Resoluções que este aparelho oferece: o que a câmera entrega para um codificador,
+     * cruzado com o que o codificador H.264 por hardware aceita. Cada item diz se está
+     * disponível e, quando não está, o motivo em português.
+     *
+     * [maxFpsOf] devolve o FPS máximo que a câmera sustenta no tamanho.
+     */
+    fun modes(sizes: List<Size>, maxFpsOf: (Size) -> Int): List<Map<String, Any?>> =
+        sizes
+            .filter { maxOf(it.width, it.height) >= MIN_LONG_EDGE && minOf(it.width, it.height) >= MIN_SHORT_EDGE }
+            .distinctBy { it.width to it.height }
+            .sortedBy { it.width.toLong() * it.height }
+            .map { size ->
+                val cameraFps = maxFpsOf(size)
+                val fps = minOf(cameraFps, DEFAULT_FPS)
+                val reason = when {
+                    fps < MIN_FPS_OPTION ->
+                        "a câmera entrega no máximo $cameraFps FPS em ${size.width}×${size.height}"
+                    findEncoder(size.width, size.height, fps) == null ->
+                        "sem codificador H.264 por hardware para ${size.width}×${size.height}"
+                    else -> null
+                }
+                mapOf(
+                    "id" to "${size.width}x${size.height}",
+                    "width" to size.width,
+                    "height" to size.height,
+                    "available" to (reason == null),
+                    "reason" to reason,
+                    "maxFps" to fps,
+                )
             }
+
+    /** Disponibilidade dos três perfis nomeados do protocolo, a partir da lista de resoluções. */
+    fun namedAvailability(modes: List<Map<String, Any?>>): List<Map<String, Any?>> =
+        NAMED_PROFILES.map { (id, size) ->
+            val mode = modes.firstOrNull { it["width"] == size.width && it["height"] == size.height }
             mapOf(
-                "profile" to profile.id,
-                "width" to profile.width,
-                "height" to profile.height,
-                "available" to (reason == null),
-                "reason" to reason,
+                "profile" to id,
+                "available" to (mode?.get("available") == true),
+                // O motivo só existe quando NÃO está disponível: com `?:`, um perfil disponível
+                // (motivo nulo) receberia a mensagem de "a câmera não oferece" por engano.
+                "reason" to if (mode == null) "a câmera não oferece ${size.width}×${size.height}" else mode["reason"],
             )
         }
 }

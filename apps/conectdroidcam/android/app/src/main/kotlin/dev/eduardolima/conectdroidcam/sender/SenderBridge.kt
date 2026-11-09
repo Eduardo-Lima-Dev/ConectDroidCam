@@ -17,8 +17,8 @@ import java.net.NetworkInterface
  * Liga a interface Flutter ao emissor nativo. Contrato:
  *
  * MethodChannel `cdc/sender`: hasCameraPermission, requestCameraPermission,
- * listProfiles, localAddresses, startPreview, stopPreview, startStreaming(profile),
- * stopStreaming.
+ * listModes, localAddresses, startPreview, stopPreview, startStreaming(width, height, fps),
+ * setFps(fps), stopStreaming.
  *
  * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | error.
  */
@@ -39,6 +39,9 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     private var lastCounters: StreamServer.Counters? = null
     private var lastStatsAtMs = 0L
 
+    /** FPS máximo da resolução em uso; limita o que `setFps` aceita. */
+    private var streamMaxFps = DEFAULT_FPS
+
     init {
         MethodChannel(engine.dartExecutor.binaryMessenger, METHODS).setMethodCallHandler(this)
         EventChannel(engine.dartExecutor.binaryMessenger, EVENTS).setStreamHandler(this)
@@ -55,14 +58,20 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
             when (call.method) {
                 "hasCameraPermission" -> result.success(hasCameraPermission())
                 "requestCameraPermission" -> requestCameraPermission(result)
-                "listProfiles" -> listProfiles(result)
+                "listModes" -> listModes(result)
                 "localAddresses" -> result.success(localAddresses())
                 "startPreview" -> startPreview(result)
                 "stopPreview" -> {
                     stopAll()
                     result.success(null)
                 }
-                "startStreaming" -> startStreaming(call.argument<String>("profile"), result)
+                "startStreaming" -> startStreaming(
+                    call.argument<Int>("width"),
+                    call.argument<Int>("height"),
+                    call.argument<Int>("fps"),
+                    result,
+                )
+                "setFps" -> setFps(call.argument<Int>("fps"), result)
                 "stopStreaming" -> {
                     stopStreaming()
                     result.success(null)
@@ -92,9 +101,13 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
 
     // --- Perfis e rede ------------------------------------------------------------------
 
-    private fun listProfiles(result: MethodChannel.Result) {
+    private fun cameraModes(cam: CameraController): List<Map<String, Any?>> =
+        CodecSupport.modes(cam.encoderSizes()) { cam.maxFps(it) }
+
+    private fun listModes(result: MethodChannel.Result) {
         if (!hasCameraPermission()) return result.error("permission", "Sem permissão de câmera", null)
-        result.success(CodecSupport.availability(ensureCamera().encoderSizes()))
+        val cam = ensureCamera()
+        result.success(mapOf("modes" to cameraModes(cam), "fpsOptions" to cam.fixedFpsOptions()))
     }
 
     /** 0, 1, 2 ou 3 = Surface.ROTATION_0, 90, 180 ou 270. */
@@ -141,24 +154,33 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
 
     // --- Transmissão --------------------------------------------------------------------
 
-    private fun startStreaming(profileId: String?, result: MethodChannel.Result) {
-        val profile = profileId?.let { Profile.fromId(it) }
-            ?: return result.error("argument", "Perfil inválido: $profileId", null)
+    private fun startStreaming(width: Int?, height: Int?, fps: Int?, result: MethodChannel.Result) {
+        if (width == null || height == null || fps == null) {
+            return result.error("argument", "Informe largura, altura e FPS", null)
+        }
         val cam = camera ?: return result.error("state", "Abra a prévia antes de transmitir", null)
         if (encoder != null) return result.error("state", "Já está transmitindo", null)
-        if (CodecSupport.availability(cam.encoderSizes()).first { it["profile"] == profile.id }["available"] != true) {
-            return result.error("unsupported", "Perfil indisponível neste aparelho", null)
+
+        val modes = cameraModes(cam)
+        val mode = modes.firstOrNull { it["width"] == width && it["height"] == height }
+        if (mode == null || mode["available"] != true) {
+            return result.error("unsupported", "Resolução indisponível neste aparelho", null)
+        }
+        val maxFps = mode["maxFps"] as Int
+        if (fps !in cam.fixedFpsOptions() || fps > maxFps) {
+            return result.error("unsupported", "FPS indisponível nesta resolução", null)
         }
 
+        val bitrate = bitrateFor(width, height)
         val newServer = StreamServer(PORT, APP_VERSION, this)
-        val newEncoder = VideoEncoder(profile, this)
+        val newEncoder = VideoEncoder(width, height, fps, bitrate, this)
         // Atribuídos antes de iniciar: o codificador entrega o SPS/PPS logo ao começar, e
         // `onConfig` precisa encontrar o servidor, senão a configuração se perde.
         server = newServer
         encoder = newEncoder
         try {
-            newServer.setStream(profile)
-            newServer.setProfiles(CodecSupport.availability(cam.encoderSizes()))
+            newServer.setStream(width, height, fps, bitrate)
+            newServer.setProfiles(CodecSupport.namedAvailability(modes))
             newServer.start()
             newEncoder.start()
         } catch (e: Exception) {
@@ -169,6 +191,8 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
             return result.error("start", e.message ?: "Não foi possível iniciar a transmissão", null)
         }
 
+        streamMaxFps = maxFps
+        cam.targetFps = fps
         cam.attachEncoder(newEncoder.inputSurface) { outcome ->
             main.post {
                 outcome.fold(
@@ -177,11 +201,10 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                         startStats()
                         result.success(
                             mapOf(
-                                "profile" to profile.id,
-                                "width" to profile.width,
-                                "height" to profile.height,
-                                "fps" to STREAM_FPS,
-                                "bitrateKbps" to profile.bitrateKbps,
+                                "width" to width,
+                                "height" to height,
+                                "fps" to fps,
+                                "bitrateKbps" to bitrate,
                                 "port" to PORT,
                             ),
                         )
@@ -190,6 +213,25 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                         stopStreaming()
                         result.error("camera", it.message ?: "Falha ao ligar a câmera ao codificador", null)
                     },
+                )
+            }
+        }
+    }
+
+    /** Muda o FPS com a transmissão ligada, sem reiniciar câmera nem codificador. */
+    private fun setFps(fps: Int?, result: MethodChannel.Result) {
+        val cam = camera ?: return result.error("state", "Abra a prévia primeiro", null)
+        if (fps == null || fps !in cam.fixedFpsOptions() || fps > streamMaxFps) {
+            return result.error("argument", "FPS inválido para esta resolução: $fps", null)
+        }
+        cam.setFps(fps) { outcome ->
+            main.post {
+                outcome.fold(
+                    onSuccess = {
+                        server?.updateFps(fps)
+                        result.success(null)
+                    },
+                    onFailure = { result.error("camera", it.message ?: "Falha ao mudar o FPS", null) },
                 )
             }
         }

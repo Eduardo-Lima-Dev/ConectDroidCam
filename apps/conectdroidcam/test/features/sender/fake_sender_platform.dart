@@ -11,18 +11,39 @@ class FakeSenderPlatform implements SenderPlatform {
   int previewStarts = 0;
   int streamStarts = 0;
   int streamStops = 0;
+  VideoMode? lastStreamedMode;
+  int? lastStreamedFps;
+  final List<int> setFpsCalls = [];
   SenderException? startPreviewError;
   SenderException? startStreamingError;
+  SenderException? setFpsError;
 
-  List<ProfileAvailability> profiles = const [
-    ProfileAvailability(profile: VideoProfile.hd, available: true),
-    ProfileAvailability(profile: VideoProfile.fullHd, available: true),
-    ProfileAvailability(
-      profile: VideoProfile.qhd,
-      available: false,
-      reason: 'a câmera não oferece 2560×1440',
-    ),
-  ];
+  /// Um aparelho parecido com o de teste: HD e Full HD ok, 2K indisponível,
+  /// e duas resoluções extras (uma que só chega a 20 FPS).
+  SenderCapabilities capabilities = const SenderCapabilities(
+    fpsOptions: [15, 20, 30],
+    modes: [
+      ModeAvailability(mode: VideoMode.hd, available: true),
+      ModeAvailability(mode: VideoMode(1920, 1080), available: true),
+      ModeAvailability(
+        mode: VideoMode.qhd,
+        available: false,
+        reason: 'sem codificador H.264 por hardware para 2560×1440',
+      ),
+      ModeAvailability(mode: VideoMode(1920, 1440), available: true),
+      ModeAvailability(mode: VideoMode.uhd, available: true),
+      ModeAvailability(
+        mode: VideoMode(4000, 2256),
+        available: true,
+        maxFps: 20,
+      ),
+      ModeAvailability(
+        mode: VideoMode(4000, 3000),
+        available: false,
+        reason: 'sem codificador H.264 por hardware para 4000×3000',
+      ),
+    ],
+  );
 
   final _events = StreamController<SenderEvent>.broadcast();
 
@@ -39,7 +60,7 @@ class FakeSenderPlatform implements SenderPlatform {
   }
 
   @override
-  Future<List<ProfileAvailability>> listProfiles() async => profiles;
+  Future<SenderCapabilities> listModes() async => capabilities;
 
   @override
   Future<List<LocalAddress>> localAddresses() async => const [
@@ -59,18 +80,20 @@ class FakeSenderPlatform implements SenderPlatform {
   Future<void> stopPreview() async {}
 
   @override
-  Future<StreamInfo> startStreaming(VideoProfile profile) async {
+  Future<StreamInfo> startStreaming(VideoMode mode, int fps) async {
     final error = startStreamingError;
     if (error != null) throw error;
     streamStarts++;
-    return StreamInfo(
-      profile: profile,
-      width: profile.width,
-      height: profile.height,
-      fps: 30,
-      bitrateKbps: profile.bitrateKbps,
-      port: 47821,
-    );
+    lastStreamedMode = mode;
+    lastStreamedFps = fps;
+    return StreamInfo(mode: mode, fps: fps, bitrateKbps: 3000, port: 47821);
+  }
+
+  @override
+  Future<void> setFps(int fps) async {
+    final error = setFpsError;
+    if (error != null) throw error;
+    setFpsCalls.add(fps);
   }
 
   @override

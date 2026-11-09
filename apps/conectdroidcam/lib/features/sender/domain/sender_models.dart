@@ -1,45 +1,112 @@
-/// Perfis de vídeo do protocolo v1.
-enum VideoProfile {
-  hd('hd', 'HD', 1280, 720, 3000),
-  fullHd('fullHd', 'Full HD', 1920, 1080, 6000),
-  qhd('qhd', '2K', 2560, 1440, 9000);
+/// Uma resolução de vídeo.
+class VideoMode {
+  const VideoMode(this.width, this.height);
 
-  const VideoProfile(
-    this.id,
-    this.name,
-    this.width,
-    this.height,
-    this.bitrateKbps,
-  );
-
-  final String id;
-  final String name;
   final int width;
   final int height;
-  final int bitrateKbps;
 
-  /// Nome mostrado ao usuário. O "2K" sempre aparece com a resolução.
-  String get label => '$name ($width×$height)';
+  static const hd = VideoMode(1280, 720);
+  static const fullHd = VideoMode(1920, 1080);
+  static const qhd = VideoMode(2560, 1440);
+  static const uhd = VideoMode(3840, 2160);
 
-  static VideoProfile? fromId(String id) {
-    for (final profile in values) {
-      if (profile.id == id) return profile;
+  /// As três resoluções principais, sempre mostradas na tela.
+  static const main = [hd, fullHd, qhd];
+
+  bool get isMain => main.contains(this);
+
+  /// Nome comercial, ou vazio para resoluções sem nome conhecido.
+  String get name {
+    if (this == hd) return 'HD';
+    if (this == fullHd) return 'Full HD';
+    if (this == qhd) return '2K';
+    if (this == uhd) return '4K';
+    return '';
+  }
+
+  /// Texto mostrado ao usuário. O "2K" sempre aparece com a resolução.
+  String get label =>
+      name.isEmpty ? '$width×$height' : '$name ($width×$height)';
+
+  int get pixels => width * height;
+
+  @override
+  bool operator ==(Object other) =>
+      other is VideoMode && other.width == width && other.height == height;
+
+  @override
+  int get hashCode => Object.hash(width, height);
+
+  @override
+  String toString() => 'VideoMode($width×$height)';
+}
+
+/// Se uma resolução pode ser usada neste aparelho, e o motivo quando não pode.
+class ModeAvailability {
+  const ModeAvailability({
+    required this.mode,
+    required this.available,
+    this.reason,
+    this.maxFps = 30,
+  });
+
+  final VideoMode mode;
+  final bool available;
+  final String? reason;
+
+  /// Maior FPS que a câmera sustenta nesta resolução.
+  final int maxFps;
+}
+
+/// O que este aparelho oferece, descoberto pela câmera e pelo codificador.
+class SenderCapabilities {
+  const SenderCapabilities({required this.modes, required this.fpsOptions});
+
+  /// Todas as resoluções que passam do piso de 720p, com a disponibilidade de cada uma.
+  final List<ModeAvailability> modes;
+
+  /// FPS fixos que a câmera aceita, em ordem crescente.
+  final List<int> fpsOptions;
+
+  static const empty = SenderCapabilities(modes: [], fpsOptions: [30]);
+
+  ModeAvailability? find(VideoMode mode) {
+    for (final item in modes) {
+      if (item.mode == mode) return item;
     }
     return null;
   }
-}
 
-/// Se um perfil pode ser usado neste aparelho, e o motivo quando não pode.
-class ProfileAvailability {
-  const ProfileAvailability({
-    required this.profile,
-    required this.available,
-    this.reason,
-  });
+  /// HD, Full HD e 2K, nesta ordem. Se a câmera não oferece uma delas, aparece
+  /// indisponível com o motivo, em vez de sumir.
+  List<ModeAvailability> get mainModes => [
+    for (final mode in VideoMode.main)
+      find(mode) ??
+          ModeAvailability(
+            mode: mode,
+            available: false,
+            reason: 'a câmera não oferece ${mode.width}×${mode.height}',
+          ),
+  ];
 
-  final VideoProfile profile;
-  final bool available;
-  final String? reason;
+  /// Demais resoluções utilizáveis, da menor para a maior.
+  List<ModeAvailability> get extraModes =>
+      modes.where((m) => m.available && !m.mode.isMain).toList()
+        ..sort((a, b) => a.mode.pixels.compareTo(b.mode.pixels));
+
+  /// FPS que dá para usar nesta resolução.
+  List<int> fpsFor(VideoMode mode) {
+    final max = find(mode)?.maxFps ?? 30;
+    final options = fpsOptions.where((f) => f <= max).toList();
+    return options.isEmpty ? [max] : options;
+  }
+
+  /// O FPS desejado, ajustado ao que a resolução sustenta: o maior que não passa dele.
+  int clampFps(VideoMode mode, int desired) {
+    final options = fpsFor(mode);
+    final fitting = options.where((f) => f <= desired).toList();
+    return fitting.isEmpty ? options.first : fitting.last;
+  }
 }
 
 /// Câmera aberta para a prévia: textura do Flutter e como orientá-la.
@@ -97,20 +164,19 @@ class PreviewInfo {
 /// O que o emissor realmente está entregando.
 class StreamInfo {
   const StreamInfo({
-    required this.profile,
-    required this.width,
-    required this.height,
+    required this.mode,
     required this.fps,
     required this.bitrateKbps,
     required this.port,
   });
 
-  final VideoProfile profile;
-  final int width;
-  final int height;
+  final VideoMode mode;
   final int fps;
   final int bitrateKbps;
   final int port;
+
+  int get width => mode.width;
+  int get height => mode.height;
 }
 
 /// Endereço IPv4 de uma interface de rede do celular.

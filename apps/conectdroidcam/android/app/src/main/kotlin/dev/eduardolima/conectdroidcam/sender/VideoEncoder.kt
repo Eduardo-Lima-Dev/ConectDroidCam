@@ -11,7 +11,10 @@ import android.view.Surface
 
 /** H.264 por hardware, com a câmera escrevendo direto na superfície de entrada. */
 class VideoEncoder(
-    private val profile: Profile,
+    private val width: Int,
+    private val height: Int,
+    private val fps: Int,
+    private val bitrateKbps: Int,
     private val listener: Listener,
 ) {
     interface Listener {
@@ -31,14 +34,14 @@ class VideoEncoder(
         private set
 
     fun start() {
-        val info = CodecSupport.findEncoder(profile.width, profile.height)
+        val info = CodecSupport.findEncoder(width, height, fps)
             ?: throw IllegalStateException(
-                "Sem codificador H.264 por hardware para ${profile.width}×${profile.height}",
+                "Sem codificador H.264 por hardware para $width×$height",
             )
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, profile.width, profile.height).apply {
+        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, profile.bitrateKbps * 1000)
-            setInteger(MediaFormat.KEY_FRAME_RATE, STREAM_FPS)
+            setInteger(MediaFormat.KEY_BIT_RATE, bitrateKbps * 1000)
+            setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             setInteger(
                 MediaFormat.KEY_BITRATE_MODE,

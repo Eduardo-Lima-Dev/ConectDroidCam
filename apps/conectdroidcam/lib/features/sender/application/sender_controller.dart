@@ -33,31 +33,43 @@ class SenderState {
   const SenderState({
     this.phase = SenderPhase.initial,
     this.preview,
-    this.profiles = const [],
-    this.selected = VideoProfile.hd,
+    this.capabilities = SenderCapabilities.empty,
+    this.selected = VideoMode.hd,
+    this.selectedFps = 30,
     this.addresses = const [],
     this.stream,
     this.clientPeer,
-    this.fps = 0,
+    this.measuredFps = 0,
     this.bitrateKbps = 0,
     this.dropped = 0,
     this.error,
+    this.notice,
     this.busy = false,
   });
 
   final SenderPhase phase;
   final PreviewInfo? preview;
-  final List<ProfileAvailability> profiles;
-  final VideoProfile selected;
+  final SenderCapabilities capabilities;
+  final VideoMode selected;
+
+  /// FPS escolhido pelo usuário. Pode ser mudado com a transmissão ligada.
+  final int selectedFps;
   final List<LocalAddress> addresses;
   final StreamInfo? stream;
 
   /// Endereço do computador conectado, ou `null` se ninguém está conectado.
   final String? clientPeer;
-  final double fps;
+
+  /// FPS medido no envio, que pode diferir do escolhido.
+  final double measuredFps;
   final double bitrateKbps;
   final int dropped;
+
+  /// Falha que interrompeu o emissor.
   final String? error;
+
+  /// Aviso que não interrompe nada, como um FPS que o aparelho recusou.
+  final String? notice;
 
   /// Uma operação assíncrona está em andamento; os botões ficam desativados.
   final bool busy;
@@ -72,32 +84,39 @@ class SenderState {
     return addresses.isEmpty ? null : addresses.first;
   }
 
+  /// Dá para iniciar a transmissão com a resolução escolhida?
+  bool get canStart => capabilities.find(selected)?.available ?? false;
+
   SenderState copyWith({
     SenderPhase? phase,
     PreviewInfo? Function()? preview,
-    List<ProfileAvailability>? profiles,
-    VideoProfile? selected,
+    SenderCapabilities? capabilities,
+    VideoMode? selected,
+    int? selectedFps,
     List<LocalAddress>? addresses,
     StreamInfo? Function()? stream,
     String? Function()? clientPeer,
-    double? fps,
+    double? measuredFps,
     double? bitrateKbps,
     int? dropped,
     String? Function()? error,
+    String? Function()? notice,
     bool? busy,
   }) {
     return SenderState(
       phase: phase ?? this.phase,
       preview: preview != null ? preview() : this.preview,
-      profiles: profiles ?? this.profiles,
+      capabilities: capabilities ?? this.capabilities,
       selected: selected ?? this.selected,
+      selectedFps: selectedFps ?? this.selectedFps,
       addresses: addresses ?? this.addresses,
       stream: stream != null ? stream() : this.stream,
       clientPeer: clientPeer != null ? clientPeer() : this.clientPeer,
-      fps: fps ?? this.fps,
+      measuredFps: measuredFps ?? this.measuredFps,
       bitrateKbps: bitrateKbps ?? this.bitrateKbps,
       dropped: dropped ?? this.dropped,
       error: error != null ? error() : this.error,
+      notice: notice != null ? notice() : this.notice,
       busy: busy ?? this.busy,
     );
   }
@@ -134,6 +153,7 @@ class SenderController extends Notifier<SenderState> {
       phase: SenderPhase.starting,
       busy: true,
       error: () => null,
+      notice: () => null,
     );
     try {
       var granted = await _platform.hasCameraPermission();
@@ -150,21 +170,19 @@ class SenderController extends Notifier<SenderState> {
       }
 
       final preview = await _platform.startPreview();
-      final profiles = await _platform.listProfiles();
+      final capabilities = await _platform.listModes();
       final addresses = await _platform.localAddresses();
       _listen();
 
-      // Mantém a escolha atual se ainda valer; senão, o primeiro perfil disponível.
-      final usable = profiles.where((p) => p.available).map((p) => p.profile);
-      final selected = usable.contains(state.selected)
-          ? state.selected
-          : (usable.isEmpty ? state.selected : usable.first);
+      // Mantém a escolha atual se ainda valer; senão, a primeira principal disponível.
+      final selected = _pickMode(capabilities, state.selected);
       state = state.copyWith(
         phase: SenderPhase.ready,
         preview: () => preview,
-        profiles: profiles,
+        capabilities: capabilities,
         addresses: addresses,
         selected: selected,
+        selectedFps: capabilities.clampFps(selected, state.selectedFps),
         busy: false,
       );
     } on SenderException catch (e) {
@@ -172,25 +190,63 @@ class SenderController extends Notifier<SenderState> {
     }
   }
 
-  void select(VideoProfile profile) {
+  VideoMode _pickMode(SenderCapabilities capabilities, VideoMode preferred) {
+    if (capabilities.find(preferred)?.available ?? false) return preferred;
+    for (final item in capabilities.mainModes) {
+      if (item.available) return item.mode;
+    }
+    for (final item in capabilities.modes) {
+      if (item.available) return item.mode;
+    }
+    return preferred;
+  }
+
+  void select(VideoMode mode) {
     if (state.isStreaming || state.busy) return;
-    final entry = state.profiles.where((p) => p.profile == profile);
-    if (entry.isEmpty || !entry.first.available) return;
-    state = state.copyWith(selected: profile);
+    if (!(state.capabilities.find(mode)?.available ?? false)) return;
+    state = state.copyWith(
+      selected: mode,
+      selectedFps: state.capabilities.clampFps(mode, state.selectedFps),
+      notice: () => null,
+    );
+  }
+
+  /// Escolhe o FPS. Com a transmissão ligada, aplica na hora.
+  Future<void> selectFps(int fps) async {
+    if (state.busy || fps == state.selectedFps) return;
+    if (!state.capabilities.fpsFor(state.selected).contains(fps)) return;
+
+    if (!state.isStreaming) {
+      state = state.copyWith(selectedFps: fps, notice: () => null);
+      return;
+    }
+    state = state.copyWith(busy: true, notice: () => null);
+    try {
+      await _platform.setFps(fps);
+      state = state.copyWith(selectedFps: fps, busy: false);
+    } on SenderException catch (e) {
+      // Falhar em trocar o FPS não derruba a transmissão.
+      state = state.copyWith(busy: false, notice: () => e.message);
+    }
   }
 
   Future<void> startStreaming() async {
-    if (state.busy || state.phase != SenderPhase.ready) return;
-    state = state.copyWith(busy: true, error: () => null);
+    if (state.busy || state.phase != SenderPhase.ready || !state.canStart) {
+      return;
+    }
+    state = state.copyWith(busy: true, error: () => null, notice: () => null);
     try {
-      final stream = await _platform.startStreaming(state.selected);
+      final stream = await _platform.startStreaming(
+        state.selected,
+        state.selectedFps,
+      );
       final addresses = await _platform.localAddresses();
       state = state.copyWith(
         phase: SenderPhase.streaming,
         stream: () => stream,
         addresses: addresses,
         clientPeer: () => null,
-        fps: 0,
+        measuredFps: 0,
         bitrateKbps: 0,
         dropped: 0,
         busy: false,
@@ -213,7 +269,7 @@ class SenderController extends Notifier<SenderState> {
       phase: SenderPhase.ready,
       stream: () => null,
       clientPeer: () => null,
-      fps: 0,
+      measuredFps: 0,
       bitrateKbps: 0,
       busy: false,
     );
@@ -229,7 +285,7 @@ class SenderController extends Notifier<SenderState> {
         state = state.copyWith(clientPeer: () => connected ? peer : null);
       case StatsEvent(:final fps, :final bitrateKbps, :final dropped):
         state = state.copyWith(
-          fps: fps,
+          measuredFps: fps,
           bitrateKbps: bitrateKbps,
           dropped: dropped,
         );
