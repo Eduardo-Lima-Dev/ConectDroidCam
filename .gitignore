@@ -1,0 +1,62 @@
+# Sistema e editores
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+*.g.dart.bak
+
+# Android
+**/android/.gradle/
+**/android/local.properties
+**/android/key.properties
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+*.jks
+*.keystore
+*.apk
+*.aab
+
+# iOS / macOS
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/ephemeral/
+**/macos/Pods/
+**/macos/Flutter/ephemeral/
+xcuserdata/
+*.xcuserstate
+*.mobileprovision
+*.p12
+
+# Rust
+rust/target/
+**/target/
+Cargo.lock.bak
+
+# Pacotes e artefatos de release
+dist/
+*.AppImage
+*.deb
+*.rpm
+*.dmg
+*.pkg.tar.zst
+
+# Segredos e dados locais
+.env
+.env.*
+*.pem
+*.key
+*.log
+spikes/**/captures/
