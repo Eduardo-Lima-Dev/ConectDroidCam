@@ -1,4 +1,8 @@
-# ConectDroidCam
+<p align="center">
+  <img src="apps/conectdroidcam/assets/branding/logo.png" width="128" alt="Logo do ConectDroidCam">
+</p>
+
+<h1 align="center">ConectDroidCam</h1>
 
 Use a câmera do celular (Android ou iPhone) como webcam no computador (Linux ou macOS), por Wi-Fi ou cabo USB, para o OBS Studio e outros programas.
 
@@ -33,6 +37,7 @@ Use a câmera do celular (Android ou iPhone) como webcam no computador (Linux ou
 - [Protocolo v1](docs/protocol-v1.md)
 - [Conectar o celular pelo ADB (Linux e macOS)](docs/guia-adb.md)
 - [Resultados dos spikes da Fase 1](docs/decisoes/fase1-spikes.md)
+- [Identidade visual e como refazer os ícones](docs/identidade-visual.md)
 - [Especificação original](docs/especificacao-original.md) (ponto de partida; a arquitetura foi revisada)
 
 ## Desenvolvimento
