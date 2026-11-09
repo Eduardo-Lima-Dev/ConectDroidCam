@@ -329,4 +329,47 @@ void main() {
       expect(state().error, 'porta em uso');
     });
   });
+
+  group('anúncio na rede', () {
+    test('mostra o nome com que o celular aparece para o computador', () async {
+      await controller().start();
+      await controller().startStreaming();
+
+      platform.emit(
+        const DiscoveryEvent(registered: true, name: 'ConectDroidCam Pixel'),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(state().visibleAs, 'ConectDroidCam Pixel');
+      expect(state().visibilityError, isNull);
+    });
+
+    test(
+      'se o anúncio falhar, guarda o motivo e o app segue funcionando',
+      () async {
+        await controller().start();
+        await controller().startStreaming();
+
+        platform.emit(
+          const DiscoveryEvent(registered: false, error: 'código 3'),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(state().visibleAs, isNull);
+        expect(state().visibilityError, 'código 3');
+        expect(state().isStreaming, isTrue);
+      },
+    );
+
+    test('ao parar a transmissão o anúncio some', () async {
+      await controller().start();
+      await controller().startStreaming();
+      platform.emit(const DiscoveryEvent(registered: true, name: 'X'));
+      await Future<void>.delayed(Duration.zero);
+
+      await controller().stopStreaming();
+
+      expect(state().visibleAs, isNull);
+    });
+  });
 }

@@ -33,6 +33,13 @@ class CameraController(
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     val cameraId: String = pickCameraId()
     private val characteristics = manager.getCameraCharacteristics(cameraId)
+    /** Graus, no sentido horário, que a imagem do sensor precisa girar para ficar em pé com o aparelho na posição natural. */
+    val sensorOrientation: Int =
+        characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+
+    val isFrontFacing: Boolean =
+        characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+
     private val aeRanges: Array<Range<Int>> =
         characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: emptyArray()
 
@@ -109,7 +116,6 @@ class CameraController(
         textureEntry.surfaceTexture().setDefaultBufferSize(size.width, size.height)
         entry = textureEntry
         previewSurface = Surface(textureEntry.surfaceTexture())
-        val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
         val info = Preview(textureEntry.id(), size.width, size.height, sensorOrientation)
 
         try {

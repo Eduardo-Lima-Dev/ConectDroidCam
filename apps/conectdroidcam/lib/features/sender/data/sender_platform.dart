@@ -146,6 +146,12 @@ class ChannelSenderPlatform implements SenderPlatform {
         );
       case 'rotation':
         return RotationEvent((raw['displayRotation']! as num).toInt());
+      case 'discovery':
+        return DiscoveryEvent(
+          registered: raw['registered']! as bool,
+          name: raw['name'] as String?,
+          error: raw['error'] as String?,
+        );
       case 'error':
         return ErrorEvent(raw['message']! as String);
       default:

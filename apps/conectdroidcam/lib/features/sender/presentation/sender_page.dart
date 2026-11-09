@@ -663,6 +663,32 @@ class _ConnectionInfo extends StatelessWidget {
                   : '${address.address}:${stream?.port ?? ''}',
               style: mono,
             ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  state.visibleAs != null
+                      ? Icons.wifi_tethering
+                      : Icons.wifi_tethering_off,
+                  size: 16,
+                  color: state.visibleAs != null
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(switch ((
+                    state.visibleAs,
+                    state.visibilityError,
+                  )) {
+                    (final nome?, _) => 'Visível na rede como "$nome"',
+                    (_, final erro?) =>
+                      'Não apareceu na rede ($erro): use o endereço acima',
+                    _ => 'Anunciando na rede…',
+                  }, style: theme.textTheme.bodySmall),
+                ),
+              ],
+            ),
             if (stream != null) ...[
               const SizedBox(height: 12),
               Text(

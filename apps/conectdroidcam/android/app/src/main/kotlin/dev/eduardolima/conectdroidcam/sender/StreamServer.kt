@@ -48,15 +48,22 @@ class StreamServer(
     private val bytesSent = AtomicLong()
     private val framesDropped = AtomicLong()
 
-    @Volatile private var info = StreamInfo(0, 0, 0, 0)
+    @Volatile private var info = StreamInfo(0, 0, 0, 0, 0)
     @Volatile private var videoConfig: ByteArray? = null
     @Volatile private var profiles: List<Map<String, Any?>> = emptyList()
     private var basePtsUs = -1L
 
-    private data class StreamInfo(val width: Int, val height: Int, val fps: Int, val bitrateKbps: Int)
+    /** [rotation]: graus, no sentido horário, que o quadro precisa girar para ficar em pé. */
+    private data class StreamInfo(
+        val width: Int,
+        val height: Int,
+        val fps: Int,
+        val bitrateKbps: Int,
+        val rotation: Int,
+    )
 
-    fun setStream(width: Int, height: Int, fps: Int, bitrateKbps: Int) {
-        info = StreamInfo(width, height, fps, bitrateKbps)
+    fun setStream(width: Int, height: Int, fps: Int, bitrateKbps: Int, rotation: Int) {
+        info = StreamInfo(width, height, fps, bitrateKbps, rotation)
         videoConfig = null
         basePtsUs = -1L
     }
@@ -67,11 +74,19 @@ class StreamServer(
         client?.enqueueControl(profileActualFrame())
     }
 
+    /** O celular girou com a transmissão ligada: avisa o cliente, que gira a imagem de volta. */
+    fun updateRotation(rotation: Int) {
+        if (info.rotation == rotation) return
+        info = info.copy(rotation = rotation)
+        client?.enqueueControl(profileActualFrame())
+    }
+
     private fun profileActualFrame() = Protocol.control("profile.actual") {
         put("width", info.width)
         put("height", info.height)
         put("fps", info.fps)
         put("bitrateKbps", info.bitrateKbps)
+        put("rotation", info.rotation)
     }
 
     fun setProfiles(list: List<Map<String, Any?>>) {

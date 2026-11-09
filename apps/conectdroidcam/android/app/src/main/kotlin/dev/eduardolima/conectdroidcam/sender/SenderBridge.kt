@@ -20,7 +20,7 @@ import java.net.NetworkInterface
  * listModes, localAddresses, startPreview, stopPreview, startStreaming(width, height, fps),
  * setFps(fps), stopStreaming.
  *
- * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | error.
+ * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | discovery | error.
  */
 class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     MethodChannel.MethodCallHandler,
@@ -34,6 +34,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     private var camera: CameraController? = null
     private var encoder: VideoEncoder? = null
     private var server: StreamServer? = null
+    private val advertiser = NsdAdvertiser(activity)
     private var pendingPermission: MethodChannel.Result? = null
     private var statsTask: Runnable? = null
     private var lastCounters: StreamServer.Counters? = null
@@ -114,9 +115,23 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     @Suppress("DEPRECATION")
     private fun displayRotation(): Int = activity.windowManager.defaultDisplay.rotation
 
-    /** A tela girou: o Flutter precisa reorientar a prévia. */
+    /**
+     * Graus, no sentido horário, que o quadro do codificador precisa girar para ficar em pé na
+     * posição atual do aparelho. O codificador entrega a imagem na orientação do sensor, que é
+     * sempre horizontal; com o celular em pé ela chega deitada. É a fórmula do Camera2: câmera
+     * traseira `sensor - tela`, frontal `sensor + tela`, que também espelha.
+     */
+    private fun videoRotation(cam: CameraController): Int {
+        val tela = displayRotation() * 90
+        val graus = if (cam.isFrontFacing) cam.sensorOrientation + tela else cam.sensorOrientation - tela
+        return (graus % 360 + 360) % 360
+    }
+
+    /** A tela girou: o Flutter reorienta a prévia e o computador, o vídeo enviado. */
     fun onConfigurationChanged() {
         events?.success(mapOf("event" to "rotation", "displayRotation" to displayRotation()))
+        val cam = camera ?: return
+        server?.updateRotation(videoRotation(cam))
     }
 
     private fun localAddresses(): List<Map<String, String>> =
@@ -179,7 +194,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         server = newServer
         encoder = newEncoder
         try {
-            newServer.setStream(width, height, fps, bitrate)
+            newServer.setStream(width, height, fps, bitrate, videoRotation(cam))
             newServer.setProfiles(CodecSupport.namedAvailability(modes))
             newServer.start()
             newEncoder.start()
@@ -191,6 +206,13 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
             return result.error("start", e.message ?: "Não foi possível iniciar a transmissão", null)
         }
 
+        advertiser.start(PORT, APP_VERSION) { name, error ->
+            main.post {
+                events?.success(
+                    mapOf("event" to "discovery", "registered" to (name != null), "name" to name, "error" to error),
+                )
+            }
+        }
         streamMaxFps = maxFps
         cam.targetFps = fps
         cam.attachEncoder(newEncoder.inputSurface) { outcome ->
@@ -244,6 +266,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         camera?.detachEncoder()
         encoder?.stop()
         encoder = null
+        advertiser.stop()
         server?.stop()
         server = null
         main.post { activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }

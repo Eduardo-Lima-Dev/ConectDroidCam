@@ -44,6 +44,8 @@ class SenderState {
     this.dropped = 0,
     this.error,
     this.notice,
+    this.visibleAs,
+    this.visibilityError,
     this.busy = false,
   });
 
@@ -70,6 +72,12 @@ class SenderState {
 
   /// Aviso que não interrompe nada, como um FPS que o aparelho recusou.
   final String? notice;
+
+  /// Nome com que o celular aparece na rede para o computador, quando já foi anunciado.
+  final String? visibleAs;
+
+  /// Por que o anúncio na rede falhou. O computador ainda conecta pelo endereço.
+  final String? visibilityError;
 
   /// Uma operação assíncrona está em andamento; os botões ficam desativados.
   final bool busy;
@@ -101,6 +109,8 @@ class SenderState {
     int? dropped,
     String? Function()? error,
     String? Function()? notice,
+    String? Function()? visibleAs,
+    String? Function()? visibilityError,
     bool? busy,
   }) {
     return SenderState(
@@ -117,6 +127,10 @@ class SenderState {
       dropped: dropped ?? this.dropped,
       error: error != null ? error() : this.error,
       notice: notice != null ? notice() : this.notice,
+      visibleAs: visibleAs != null ? visibleAs() : this.visibleAs,
+      visibilityError: visibilityError != null
+          ? visibilityError()
+          : this.visibilityError,
       busy: busy ?? this.busy,
     );
   }
@@ -269,6 +283,8 @@ class SenderController extends Notifier<SenderState> {
       phase: SenderPhase.ready,
       stream: () => null,
       clientPeer: () => null,
+      visibleAs: () => null,
+      visibilityError: () => null,
       measuredFps: 0,
       bitrateKbps: 0,
       busy: false,
@@ -296,6 +312,11 @@ class SenderController extends Notifier<SenderState> {
             preview: () => preview.copyWith(displayRotation: displayRotation),
           );
         }
+      case DiscoveryEvent(:final registered, :final name, :final error):
+        state = state.copyWith(
+          visibleAs: () => registered ? name : null,
+          visibilityError: () => registered ? null : error,
+        );
       case ErrorEvent(:final message):
         // O código nativo já parou tudo; a interface só reflete o estado.
         _fail(message);

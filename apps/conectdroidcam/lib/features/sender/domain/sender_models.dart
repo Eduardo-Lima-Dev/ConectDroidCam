@@ -224,6 +224,17 @@ class RotationEvent extends SenderEvent {
   final int displayRotation;
 }
 
+/// Resultado de anunciar o celular na rede local (mDNS).
+class DiscoveryEvent extends SenderEvent {
+  const DiscoveryEvent({required this.registered, this.name, this.error});
+
+  final bool registered;
+
+  /// Nome com que o celular aparece para o computador.
+  final String? name;
+  final String? error;
+}
+
 class ErrorEvent extends SenderEvent {
   const ErrorEvent(this.message);
 
