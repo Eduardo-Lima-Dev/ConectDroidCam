@@ -58,13 +58,16 @@ fn main() -> ExitCode {
     match run(stream, &options) {
         Ok(report) => {
             eprintln!(
-                "\nresumo: {} frames de vídeo ({} keyframes) em {:.1} s\n  média {:.1} FPS, {:.0} kb/s, maior intervalo entre frames {:.0} ms",
+                "\nresumo: {} frames de vídeo ({} keyframes) em {:.1} s\n  média {:.1} FPS, {:.0} kb/s, maior intervalo entre frames {:.0} ms\n  atraso da rede além do melhor caso: p50 {:.0} ms, p95 {:.0} ms, máx {:.0} ms",
                 report.video_frames,
                 report.keyframes,
                 report.seconds,
                 report.avg_fps,
                 report.avg_kbps,
-                report.max_gap_ms
+                report.max_gap_ms,
+                report.lag_p50_ms,
+                report.lag_p95_ms,
+                report.lag_max_ms
             );
             if report.video_frames == 0 {
                 eprintln!("nenhum frame de vídeo recebido");

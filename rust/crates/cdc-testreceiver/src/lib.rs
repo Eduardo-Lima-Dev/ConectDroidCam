@@ -53,6 +53,12 @@ pub struct Report {
     pub avg_kbps: f64,
     /// Maior intervalo entre dois frames de vídeo consecutivos, em ms.
     pub max_gap_ms: f64,
+    /// Atraso acumulado dos frames de vídeo além do melhor caso observado: quanto cada
+    /// frame chegou depois do que o relógio de captura (`pts`) previa. Mede o que a rede
+    /// (ou o emissor) atrasa; não inclui captura, codificação nem exibição.
+    pub lag_p50_ms: f64,
+    pub lag_p95_ms: f64,
+    pub lag_max_ms: f64,
     pub received_config: bool,
 }
 
@@ -116,6 +122,15 @@ impl Output {
     }
 }
 
+/// Percentil pelo método do posto mais próximo, sobre valores já ordenados.
+pub fn percentile(ordenados: &[f64], p: f64) -> f64 {
+    if ordenados.is_empty() {
+        return 0.0;
+    }
+    let posto = ((p / 100.0) * ordenados.len() as f64).ceil() as usize;
+    ordenados[posto.clamp(1, ordenados.len()) - 1]
+}
+
 fn is_disconnect(error: &io::Error) -> bool {
     matches!(
         error.kind(),
@@ -154,6 +169,8 @@ pub fn run(mut stream: TcpStream, options: &Options) -> Result<Report, ReceiverE
     let mut config: Option<Vec<u8>> = None;
     let mut config_written = false;
     let mut last_video: Option<Instant> = None;
+    let mut first_video: Option<(Instant, u64)> = None;
+    let mut lags: Vec<f64> = Vec::new();
     let mut window_start = Instant::now();
     let (mut window_frames, mut window_bytes) = (0u64, 0u64);
 
@@ -222,6 +239,12 @@ pub fn run(mut stream: TcpStream, options: &Options) -> Result<Report, ReceiverE
                 }
                 last_video = Some(now);
 
+                // Atraso bruto: quando chegou menos quando deveria ter chegado pelo pts.
+                let (inicio, pts0) = *first_video.get_or_insert((now, frame.pts_us));
+                let chegada_ms = now.duration_since(inicio).as_secs_f64() * 1000.0;
+                let previsto_ms = frame.pts_us.saturating_sub(pts0) as f64 / 1000.0;
+                lags.push(chegada_ms - previsto_ms);
+
                 // Só começa a entregar a partir de um keyframe. O SPS/PPS enviado à parte
                 // vai primeiro, se existir; sem ele, o próprio keyframe o carrega, porque
                 // o codificador repete SPS/PPS em cada IDR.
@@ -263,6 +286,14 @@ pub fn run(mut stream: TcpStream, options: &Options) -> Result<Report, ReceiverE
     }
 
     report.seconds = started.elapsed().as_secs_f64();
+    if let Some(melhor) = lags.iter().copied().reduce(f64::min) {
+        // Subtrai o melhor caso: o que sobra é atraso causado pela rede, não pelo relógio.
+        let mut ordenados: Vec<f64> = lags.iter().map(|l| l - melhor).collect();
+        ordenados.sort_by(f64::total_cmp);
+        report.lag_p50_ms = percentile(&ordenados, 50.0);
+        report.lag_p95_ms = percentile(&ordenados, 95.0);
+        report.lag_max_ms = ordenados.last().copied().unwrap_or(0.0);
+    }
     if report.seconds > 0.0 {
         report.avg_fps = report.video_frames as f64 / report.seconds;
         report.avg_kbps = report.bytes as f64 * 8.0 / 1000.0 / report.seconds;
@@ -270,4 +301,28 @@ pub fn run(mut stream: TcpStream, options: &Options) -> Result<Report, ReceiverE
     let _ = send(&mut stream, &Message::SessionStop);
     output.finish();
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percentile;
+
+    #[test]
+    fn percentil_pelo_posto_mais_proximo() {
+        let v: Vec<f64> = (1..=100).map(f64::from).collect();
+        assert_eq!(percentile(&v, 50.0), 50.0);
+        assert_eq!(percentile(&v, 95.0), 95.0);
+        assert_eq!(percentile(&v, 100.0), 100.0);
+        assert_eq!(percentile(&v, 0.0), 1.0);
+    }
+
+    #[test]
+    fn percentil_de_lista_vazia_e_zero() {
+        assert_eq!(percentile(&[], 95.0), 0.0);
+    }
+
+    #[test]
+    fn percentil_de_um_valor_e_ele_mesmo() {
+        assert_eq!(percentile(&[7.5], 95.0), 7.5);
+    }
 }
