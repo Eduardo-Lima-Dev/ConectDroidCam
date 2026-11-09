@@ -15,6 +15,22 @@ class SenderPage extends ConsumerStatefulWidget {
 }
 
 class _SenderPageState extends ConsumerState<SenderPage> {
+  bool _pairingDialogOpen = false;
+
+  /// Mostra o código de pareamento por cima de tudo, até o usuário responder ou o pedido acabar.
+  void _syncPairingDialog(PairingRequestEvent? prompt) {
+    if (prompt != null && !_pairingDialogOpen) {
+      _pairingDialogOpen = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _PairingDialog(),
+      ).whenComplete(() => _pairingDialogOpen = false);
+    } else if (prompt == null && _pairingDialogOpen) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -28,6 +44,10 @@ class _SenderPageState extends ConsumerState<SenderPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(senderControllerProvider);
     final controller = ref.read(senderControllerProvider.notifier);
+    ref.listen(
+      senderControllerProvider.select((s) => s.pairing),
+      (_, prompt) => _syncPairingDialog(prompt),
+    );
 
     return Scaffold(
       body: SafeArea(
@@ -447,8 +467,8 @@ class _ControlPanel extends ConsumerWidget {
         const SizedBox(height: 8),
         // O aviso fica junto do botão, visível antes de transmitir, e não no fim do painel.
         Text(
-          'Esta versão ainda não tem pareamento nem criptografia: '
-          'use apenas em uma rede em que você confia.',
+          'A conexão é criptografada. O computador novo só consegue ver a câmera depois '
+          'que você confirmar o código de pareamento.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -504,6 +524,97 @@ class _ControlPanel extends ConsumerWidget {
         const SizedBox(height: 16),
         if (state.isStreaming || state.phase == SenderPhase.ready)
           _ConnectionInfo(state: state),
+        const SizedBox(height: 16),
+        _PairedList(state: state),
+      ],
+    );
+  }
+}
+
+/// Pergunta se o código mostrado aqui é o mesmo que aparece no computador.
+class _PairingDialog extends ConsumerWidget {
+  const _PairingDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prompt = ref.watch(senderControllerProvider.select((s) => s.pairing));
+    final controller = ref.read(senderControllerProvider.notifier);
+    final theme = Theme.of(context);
+    if (prompt == null) return const SizedBox.shrink();
+    final code = '${prompt.code.substring(0, 3)} ${prompt.code.substring(3)}';
+    return AlertDialog(
+      title: Text('Parear com ${prompt.computer}?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Veja se este código é o mesmo que aparece no computador. '
+            'Se for diferente, não confirme: alguém pode estar no meio da conexão.',
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              code,
+              style: theme.textTheme.displaySmall?.copyWith(
+                fontFamily: 'monospace',
+                letterSpacing: 4,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => controller.confirmPairing(false),
+          child: const Text('Não é o mesmo'),
+        ),
+        FilledButton(
+          onPressed: () => controller.confirmPairing(true),
+          child: const Text('É o mesmo'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Computadores pareados, com a opção de remover o pareamento.
+class _PairedList extends ConsumerWidget {
+  const _PairedList({required this.state});
+
+  final SenderState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final controller = ref.read(senderControllerProvider.notifier);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Computadores pareados', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 4),
+        if (state.pairedComputers.isEmpty)
+          Text(
+            'Nenhum ainda. Ao conectar pela primeira vez, o computador mostra um '
+            'código que você confirma aqui.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          )
+        else
+          for (final computer in state.pairedComputers)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.computer_outlined),
+              title: Text(computer.name),
+              subtitle: Text('Certificado ${computer.shortFingerprint}'),
+              trailing: IconButton(
+                tooltip: 'Remover pareamento',
+                icon: const Icon(Icons.link_off),
+                onPressed: () => controller.unpair(computer.fingerprint),
+              ),
+            ),
       ],
     );
   }

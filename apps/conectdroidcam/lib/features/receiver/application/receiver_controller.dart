@@ -25,6 +25,14 @@ enum ReceiverPhase {
   connected,
 }
 
+/// O código que o usuário precisa conferir com o do celular.
+class PairingPrompt {
+  const PairingPrompt({required this.code, required this.phoneFingerprint});
+
+  final String code;
+  final String phoneFingerprint;
+}
+
 class ReceiverState {
   const ReceiverState({
     this.phase = ReceiverPhase.starting,
@@ -36,6 +44,8 @@ class ReceiverState {
     this.ffmpegOk = true,
     this.autoConnect = true,
     this.trustedPhones = const {},
+    this.fingerprints = const {},
+    this.pairing,
     this.connectedTo,
     this.phoneName,
     this.phonePlatform,
@@ -71,6 +81,12 @@ class ReceiverState {
 
   /// Celulares a que o usuário já conectou (identificadores mDNS).
   final Set<String> trustedPhones;
+
+  /// Impressão digital de cada celular pareado; veja [ReceiverSettings.fingerprints].
+  final Map<String, String> fingerprints;
+
+  /// Pareamento esperando o usuário conferir o código; `null` se não há.
+  final PairingPrompt? pairing;
 
   /// Endereço do celular conectado.
   final String? connectedTo;
@@ -119,6 +135,8 @@ class ReceiverState {
     bool? ffmpegOk,
     bool? autoConnect,
     Set<String>? trustedPhones,
+    Map<String, String>? fingerprints,
+    PairingPrompt? Function()? pairing,
     String? Function()? connectedTo,
     String? Function()? phoneName,
     String? Function()? phonePlatform,
@@ -144,6 +162,8 @@ class ReceiverState {
       ffmpegOk: ffmpegOk ?? this.ffmpegOk,
       autoConnect: autoConnect ?? this.autoConnect,
       trustedPhones: trustedPhones ?? this.trustedPhones,
+      fingerprints: fingerprints ?? this.fingerprints,
+      pairing: pairing != null ? pairing() : this.pairing,
       connectedTo: connectedTo != null ? connectedTo() : this.connectedTo,
       phoneName: phoneName != null ? phoneName() : this.phoneName,
       phonePlatform: phonePlatform != null
@@ -251,6 +271,7 @@ class ReceiverController extends Notifier<ReceiverState> {
       ffmpegOk: ffmpegOk,
       autoConnect: settings.autoConnect,
       trustedPhones: settings.trustedPhones,
+      fingerprints: settings.fingerprints,
       format: settings.format,
       outputSize: settings.outputSize,
     );
@@ -403,7 +424,7 @@ class ReceiverController extends Notifier<ReceiverState> {
 
   /// Esquece todos os celulares lembrados.
   Future<void> forgetPhones() async {
-    state = state.copyWith(trustedPhones: const {});
+    state = state.copyWith(trustedPhones: const {}, fingerprints: const {});
     await _saveSettings();
   }
 
@@ -411,6 +432,7 @@ class ReceiverController extends Notifier<ReceiverState> {
     ReceiverSettings(
       autoConnect: state.autoConnect,
       trustedPhones: state.trustedPhones,
+      fingerprints: state.fingerprints,
       format: state.format,
       outputSize: state.outputSize,
     ),
@@ -464,6 +486,7 @@ class ReceiverController extends Notifier<ReceiverState> {
               : const [],
           format: state.format,
           size: state.outputSize,
+          pinnedFingerprint: state.fingerprints[_phoneKey(target)],
         )
         .listen(
           _onUpdate,
@@ -477,6 +500,9 @@ class ReceiverController extends Notifier<ReceiverState> {
           },
         );
   }
+
+  /// Chave com que o celular é lembrado: o identificador da lista, ou o endereço digitado.
+  String _phoneKey(String address) => _connectedId ?? 'addr:$address';
 
   bool _looksLikeAddress(String text) {
     final i = text.lastIndexOf(':');
@@ -501,7 +527,19 @@ class ReceiverController extends Notifier<ReceiverState> {
           phoneName: () => deviceName,
           phonePlatform: () => platform,
         );
-        _rememberConnectedPhone();
+      case PairingCodeUpdate(:final code, :final phoneFingerprint):
+        state = state.copyWith(
+          pairing: () =>
+              PairingPrompt(code: code, phoneFingerprint: phoneFingerprint),
+        );
+      case PairedUpdate(:final phoneFingerprint):
+        _rememberPairedPhone(phoneFingerprint);
+      case PairingDeniedUpdate(:final reason):
+        if (_connectedId case final id?) _noAuto.add(id);
+        state = state.copyWith(
+          pairing: () => null,
+          error: () => 'Pareamento não concluído: $reason',
+        );
       case CapabilitiesUpdate(:final capabilities):
         _onCapabilities(capabilities);
       case ProfileUpdate(:final video):
@@ -626,12 +664,37 @@ class ReceiverController extends Notifier<ReceiverState> {
     await _command(() => _platform.switchCamera(front: !caps.front));
   }
 
-  /// Lembra o celular a que acabamos de conectar, para reconectar sozinho da próxima vez.
-  void _rememberConnectedPhone() {
-    final id = _connectedId;
-    if (id == null || state.trustedPhones.contains(id)) return;
-    state = state.copyWith(trustedPhones: {...state.trustedPhones, id});
+  /// Guarda a impressão digital do celular que acabou de ser pareado e o lembra para
+  /// reconectar sozinho da próxima vez.
+  void _rememberPairedPhone(String fingerprint) {
+    final key = _phoneKey(state.connectedTo ?? '');
+    state = state.copyWith(
+      pairing: () => null,
+      trustedPhones: {...state.trustedPhones, key},
+      fingerprints: {...state.fingerprints, key: fingerprint},
+    );
     unawaited(_saveSettings());
+  }
+
+  /// O usuário conferiu o código: [accept] diz se é o mesmo nas duas telas.
+  Future<void> confirmPairing(bool accept) async {
+    if (state.pairing == null) return;
+    final reason = await _platform.confirmPairing(accept);
+    if (!accept) {
+      state = state.copyWith(pairing: () => null);
+      await disconnect();
+    } else if (reason != null) {
+      state = state.copyWith(error: () => 'Não consegui confirmar: $reason');
+    }
+  }
+
+  /// Esquece o pareamento de um celular: da próxima vez será preciso parear de novo.
+  Future<void> unpair(String key) async {
+    state = state.copyWith(
+      trustedPhones: {...state.trustedPhones}..remove(key),
+      fingerprints: {...state.fingerprints}..remove(key),
+    );
+    await _saveSettings();
   }
 
   void _finish({String? error}) {
@@ -648,6 +711,7 @@ class ReceiverController extends Notifier<ReceiverState> {
       outgoing: () => null,
       stats: () => null,
       capabilities: () => null,
+      pairing: () => null,
       error: error != null ? () => error : null,
     );
   }

@@ -21,6 +21,9 @@ class FakeSenderPlatform implements SenderPlatform {
   bool front = false;
   bool canSwitch = true;
   final List<bool?> switchCalls = [];
+  final List<bool> pairingAnswers = [];
+  final List<String> unpaired = [];
+  List<PairedComputer> paired = [];
 
   /// Um aparelho parecido com o de teste: HD e Full HD ok, 2K indisponível,
   /// e duas resoluções extras (uma que só chega a 20 FPS).
@@ -123,6 +126,18 @@ class FakeSenderPlatform implements SenderPlatform {
 
   @override
   Future<void> stopStreaming() async => streamStops++;
+
+  @override
+  Future<void> confirmPairing(bool accept) async => pairingAnswers.add(accept);
+
+  @override
+  Future<List<PairedComputer>> listPaired() async => paired;
+
+  @override
+  Future<void> unpair(String fingerprint) async {
+    unpaired.add(fingerprint);
+    paired = paired.where((c) => c.fingerprint != fingerprint).toList();
+  }
 
   @override
   Stream<SenderEvent> get events => _events.stream;

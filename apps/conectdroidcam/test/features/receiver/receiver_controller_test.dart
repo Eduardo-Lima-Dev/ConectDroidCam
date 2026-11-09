@@ -393,7 +393,7 @@ void main() {
     );
 
     test(
-      'na primeira vez não conecta sozinho e depois de conectar lembra o celular',
+      'na primeira vez não conecta sozinho e depois de pareado lembra o celular',
       () async {
         await controller().start();
 
@@ -411,9 +411,15 @@ void main() {
           const HelloUpdate(deviceName: 'Pixel', platform: 'android'),
         );
         await tick();
+        // Só conectar não basta para ser lembrado: é preciso parear.
+        expect(state().trustedPhones, isEmpty);
+
+        platform.send(const PairedUpdate('abc123'));
+        await tick();
 
         expect(state().trustedPhones, {pixel.id});
         expect(store.settings.trustedPhones, {pixel.id});
+        expect(store.settings.fingerprints, {pixel.id: 'abc123'});
       },
     );
 

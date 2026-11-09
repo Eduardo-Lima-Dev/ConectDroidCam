@@ -39,6 +39,7 @@ O que já está pronto e o que falta está no [roadmap](roadmap.md). Detalhes do
 | `apps/conectdroidcam/lib/src/rust/` | Ponte Flutter ↔ Rust **gerada** (não editar; veja `scripts/gerar-ponte.sh`) |
 | `apps/conectdroidcam/android/.../sender/` | Código nativo do emissor Android: câmera, codificador, servidor TCP e anúncio mDNS |
 | `rust/crates/cdc-protocol/` | Frames e mensagens do protocolo v1 |
+| `rust/crates/cdc-security/` | Identidade (certificado) de cada instalação, TLS com impressão digital fixada e código de pareamento |
 | `rust/crates/cdc-core/` | Núcleo do receptor: descoberta mDNS, sessão com o celular, rotação e saída de vídeo |
 | `rust/crates/cdc-ffi/` | Ponte (`flutter_rust_bridge`) entre o app e o `cdc-core`; vira o `libcdc_ffi.so` do app |
 | `rust/crates/cdc-testsender/` | Celular simulado (gira, anuncia-se na rede), para testar o computador sem aparelho |
@@ -51,7 +52,8 @@ O que já está pronto e o que falta está no [roadmap](roadmap.md). Detalhes do
 Flutter (UI, Riverpod)
   └─ ReceiverPlatform ── RustReceiverPlatform ── flutter_rust_bridge ── cdc-ffi ── cdc-core
                                                                                    ├─ discovery  (mDNS)
-                                                                                   ├─ session    (TCP, protocolo v1)
+                                                                                   ├─ session    (TCP, protocolo v1, comandos ao celular)
+                                                                                   ├─ security   (TLS, pareamento — crate cdc-security)
                                                                                    ├─ filter     (gira e encaixa o quadro)
                                                                                    └─ output     (ffmpeg → /dev/videoN)
 ```

@@ -2,7 +2,7 @@
 
 Define o que celular (emissor) e computador (receptor) trocam. A implementação de referência dos frames e das mensagens é o crate [`cdc-protocol`](../rust/crates/cdc-protocol).
 
-> **Estado:** o formato dos frames e das mensagens está implementado e testado. TLS, pareamento e descoberta ainda não existem; as seções 5 e 6 descrevem o que será feito nas fases 3 e 4.
+> **Estado:** os frames, as mensagens, a descoberta por mDNS, o TLS e o pareamento estão implementados e testados. A seção 6 (controle de fluxo) descreve em parte o que ainda será refinado.
 
 ## 1. Papéis e transporte
 
@@ -104,12 +104,28 @@ O celular anuncia o servidor por mDNS enquanto transmite: serviço `_conectdroid
 
 `PERMISSION_DENIED_CAMERA` · `PERMISSION_DENIED_MIC` · `LAN_PERMISSION_DENIED` · `RECEIVER_NOT_FOUND` · `PAIRING_EXPIRED` · `AUTH_FAILED` · `UNSUPPORTED_RESOLUTION` · `CODEC_INCOMPATIBLE` · `NETWORK_INTERRUPTED` · `THERMAL_LIMIT` · `TLS_FINGERPRINT_MISMATCH` · `USB_TUNNEL_FAILED` · `VIRTUAL_CAMERA_UNAVAILABLE` · `DECODER_FAILED` · `COMMAND_FAILED`
 
-## 5. Segurança (a implementar)
+## 5. Segurança
 
-- TLS 1.3 com certificados P-256 autoassinados, um por instalação. Depois do pareamento, cada lado só aceita a impressão digital (fingerprint) do outro que ficou registrada.
-- **Pareamento:** o computador conecta sem verificar identidade, apenas nessa etapa. Os dois lados calculam um código de 6 dígitos a partir de um hash das duas impressões digitais e dos nonces, e o exibem. O usuário confirma nas duas telas. Um intermediário que tente se passar por um dos lados gera um código diferente em cada tela.
-- O código expira em 2 minutos e há limite de tentativas. As impressões digitais ficam no Keystore/Keychain do celular e no armazenamento seguro do computador, com revogação nos dois lados.
-- Logs nunca contêm mídia, chaves nem impressões digitais completas.
+Implementada no crate [`cdc-security`](../rust/crates/cdc-security) (computador) e em `PhoneSecurity.kt` / `StreamServer.kt` (celular Android).
+
+**Transporte.** Toda conexão é TLS (1.3, ou 1.2 em Androids antigos) sobre o TCP. Cada lado tem um certificado P-256 autoassinado, criado na primeira vez: no celular, com a chave no Keystore do Android; no computador, num arquivo só do dono (`~/.config/conectdroidcam/identidade`, modo 0600). **O cliente também apresenta certificado**, e a identidade de cada lado é a impressão digital (SHA-256 do certificado, 64 caracteres hexadecimais). Não há autoridade certificadora. As assinaturas do handshake são sempre verificadas: quem copia um certificado público mas não tem a chave não passa.
+
+**Quem é aceito.**
+
+- O computador só aceita o celular cuja impressão digital ficou registrada no pareamento. Se o certificado mudar, a conexão é recusada com a explicação de que pode ser outro aparelho.
+- O celular só obedece (comandos, vídeo, `capabilities`) o computador cuja impressão digital está na lista de pareados. Um computador novo recebe apenas `hello` e `error` `AUTH_FAILED`, e só `pair.request`, `pair.confirm` e `session.stop` são lidos; o resto é ignorado.
+
+**Pareamento** (na primeira conexão, ou depois de o usuário remover o pareamento):
+
+1. O celular responde ao computador desconhecido com `error` `AUTH_FAILED`.
+2. O computador gera um `nonce` e manda `pair.request`.
+3. Os dois calculam o mesmo código de 6 dígitos: SHA-256 de `"conectdroidcam-pairing-v1\0"` e, para cada um de (impressão do celular, impressão do computador, `nonce`), o tamanho em 4 bytes big-endian seguido do texto; os 4 primeiros bytes do resultado, como inteiro, módulo 1 000 000, com seis dígitos. Quem se põe no meio apresenta certificados diferentes a cada lado, e os códigos divergem.
+4. O usuário compara o código nas duas telas e confirma em cada uma. O computador envia `pair.confirm` com `confirmed`. O celular só responde `pair.confirm` `confirmed: true` quando **os dois** confirmaram; é o sinal de pareamento concluído. Recusa de qualquer lado encerra a conexão (`pair.denied` quando é o celular).
+5. Cada lado guarda a impressão digital do outro. O computador reenvia `profile.query` e `keyframe.request`, que o celular ignorou antes.
+
+O pedido vale 2 minutos. Depois de 5 pareamentos que falham em 10 minutos, o celular recusa novos pedidos por um tempo. O handshake tem prazo de 10 s. Remover o pareamento no celular desconecta o computador na hora; no computador, o app esquece a impressão do celular.
+
+**Limites conhecidos.** O código de 6 dígitos protege contra quem intermedia a conexão porque o usuário o compara; se ele confirmar sem comparar, o pareamento de um intruso vale. A lista de pareados fica em armazenamento privado do app, mas não é cifrada. A conexão automática do app só reconecta a celulares pareados. Logs não trazem impressões digitais completas.
 
 ## 6. Controle de fluxo (a implementar)
 

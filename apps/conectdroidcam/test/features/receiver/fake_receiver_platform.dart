@@ -32,6 +32,10 @@ class FakeReceiverPlatform implements ReceiverPlatform {
   OutputSize? lastSize;
   List<ShapeDevice>? lastShapeDevices;
   Object? discoverError;
+  String? lastPinned;
+
+  /// Respostas do usuário ao código de pareamento, em ordem.
+  final List<bool> pairingAnswers = [];
 
   final _phones = StreamController<PhoneChange>.broadcast();
   StreamController<ReceiverUpdate>? _session;
@@ -65,8 +69,10 @@ class FakeReceiverPlatform implements ReceiverPlatform {
     required ImageFormat format,
     required OutputSize size,
     required List<ShapeDevice> shapeDevices,
+    String? pinnedFingerprint,
   }) {
     connects++;
+    lastPinned = pinnedFingerprint;
     lastAddress = address;
     lastDevice = videoDevice;
     lastFormat = format;
@@ -91,6 +97,12 @@ class FakeReceiverPlatform implements ReceiverPlatform {
 
   Future<String?> _command(String text) async {
     commands.add(text);
+    return commandError;
+  }
+
+  @override
+  Future<String?> confirmPairing(bool accept) async {
+    pairingAnswers.add(accept);
     return commandError;
   }
 

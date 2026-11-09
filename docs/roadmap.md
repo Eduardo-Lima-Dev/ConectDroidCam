@@ -114,7 +114,7 @@ Falta:
 - [ ] Superaquecimento, bateria e interrupções da câmera.
 - [ ] Permissão de rede local do Android 17 (`ACCESS_LOCAL_NETWORK`), quando o alvo do app chegar ao SDK 37.
 - [ ] Telas de pareamento, diagnóstico e configurações; estados `advertising`, `pairing` e `paired`.
-- [ ] **TLS e pareamento** (hoje a conexão é aberta: qualquer aparelho da rede que ache a porta recebe o vídeo). Desenho: TLS 1.3 com certificado P-256 autoassinado por instalação; no primeiro contato os dois lados mostram o mesmo código de 6 dígitos (hash das duas impressões digitais e dos nonces) e o usuário confirma nas duas telas; depois só vale a impressão digital fixada. Código válido por 2 minutos, com limite de tentativas; impressões digitais em armazenamento seguro; revogação nos dois lados. A "conexão automática" de hoje não é segurança.
+- [x] **TLS e pareamento no celular Android:** TLS com certificado P-256 no Keystore, certificado do computador exigido, só computador pareado é obedecido, código de 6 dígitos comparado nas duas telas (diálogo no celular), lista de pareados com remoção, 2 min de validade e limite de tentativas. Veja a seção 5 do protocolo. **Falta validar no celular de verdade** (adb estava fora do ar): em especial se o `rustls` aceita o certificado que o Keystore gera e se o TLS 1.3 fecha com o Android do aparelho.
 - [ ] **Emissor iOS:** AVFoundation, VideoToolbox, Network.framework e Bonjour. Depende do Mac e do iPhone.
 
 ### Fase 4 — Núcleo e app do computador
@@ -123,8 +123,8 @@ O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imag
 
 - [x] Ponte Flutter ↔ Rust (`flutter_rust_bridge`) e crate `cdc-core`, que o app e o `cdc-testreceiver` compartilham.
 - [x] Descoberta por mDNS com entrada manual de IP (módulo `discovery` do `cdc-core`).
-- [ ] Transporte com TLS e impressão digital fixada, e reconexão com backoff. Hoje é TCP aberto, e uma queda encerra a sessão.
-- [ ] `cdc-pairing`: código de 6 dígitos, armazenamento seguro, revogação, limite de tentativas e validade de 2 minutos.
+- [x] Transporte com TLS e impressão digital fixada (crate `cdc-security`). **Falta** reconexão com backoff: uma queda ainda encerra a sessão.
+- [x] Pareamento no computador: código de 6 dígitos, impressão digital do celular guardada em `receptor.json`, remoção do pareamento. **Falta** guardar a identidade e as impressões em armazenamento seguro do sistema (hoje arquivos só do dono) e o celular sem pareamento antigo precisa parear de novo.
 - [ ] `cdc-decode`: aceleração por hardware (VA-API no Linux, VideoToolbox no macOS), com decodificação por software de reserva, e relógio único de áudio e vídeo.
 - [x] Interface (v1): celulares encontrados, endereço manual, resolução real, rotação aplicada, estatísticas e escolha da webcam virtual e do formato.
 - [x] **Prévia** no app: o mesmo `ffmpeg` gera quadros JPEG de 480 px a 10 por segundo (sem textura do Flutter; o S8 deixou de ser necessário para a prévia). Validada com o celular de verdade em uma execução.
@@ -223,7 +223,7 @@ Objetivo: instalar o receptor do Linux por `flatpak install flathub <id>`. **Nad
 
 1. **Validar o que existe** com o celular de verdade e o OBS: as seis webcams, trocar a resolução, girar o celular, e o APK com o `MulticastLock`. É curto e pode revelar defeitos antes de empilhar mais coisa.
 2. ~~Controle pelo PC~~ (feito e validado).
-3. **Pareamento e TLS**, antes de qualquer uso fora de uma rede de confiança. Hoje qualquer aparelho da rede que ache o celular recebe o vídeo.
+3. ~~Pareamento e TLS~~ (feito no Android e no Linux; falta validar no celular de verdade).
 4. **Microfone**: captura AAC no celular, ligado e desligado sem derrubar o vídeo, enviada ao microfone virtual do PipeWire.
 5. **USB do Android**, transmissão em segundo plano e superaquecimento. (Trocar câmera frontal e traseira já está feito no celular.)
 6. **Decisões para o Flathub** (licença, repositório público, identificador do app) e o **Flatpak** (seção "Distribuição no Flathub"). As decisões podem ser tomadas a qualquer momento e destravam o resto; o Flatpak em si é melhor depois de o pareamento e o TLS existirem, porque é o que se entrega ao público.

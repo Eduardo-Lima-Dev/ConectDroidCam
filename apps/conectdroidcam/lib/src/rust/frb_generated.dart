@@ -64,7 +64,7 @@ class CdcCore extends BaseEntrypoint<CdcCoreApi, CdcCoreApiImpl, CdcCoreWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 477192514;
+  int get rustContentHash => -1250170594;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -78,6 +78,8 @@ class CdcCore extends BaseEntrypoint<CdcCoreApi, CdcCoreApiImpl, CdcCoreWire> {
 abstract class CdcCoreApi extends BaseApi {
   Future<String> crateApiComputerName();
 
+  Future<String?> crateApiConfirmPairing({required bool accept});
+
   Stream<ReceiverEvent> crateApiConnectPhone({
     required String address,
     String? v4L2Device,
@@ -85,6 +87,7 @@ abstract class CdcCoreApi extends BaseApi {
     required OutputSize size,
     required List<ShapeDevice> shapeDevices,
     required bool preview,
+    String? pinnedFingerprint,
   });
 
   Future<void> crateApiDisconnectPhone();
@@ -144,6 +147,34 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
       const TaskConstMeta(debugName: "computer_name", argNames: []);
 
   @override
+  Future<String?> crateApiConfirmPairing({required bool accept}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_bool(accept, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiConfirmPairingConstMeta,
+        argValues: [accept],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiConfirmPairingConstMeta =>
+      const TaskConstMeta(debugName: "confirm_pairing", argNames: ["accept"]);
+
+  @override
   Stream<ReceiverEvent> crateApiConnectPhone({
     required String address,
     String? v4L2Device,
@@ -151,6 +182,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
     required OutputSize size,
     required List<ShapeDevice> shapeDevices,
     required bool preview,
+    String? pinnedFingerprint,
   }) {
     final events = RustStreamSink<ReceiverEvent>();
     unawaited(
@@ -164,11 +196,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
             sse_encode_output_size(size, serializer);
             sse_encode_list_shape_device(shapeDevices, serializer);
             sse_encode_bool(preview, serializer);
+            sse_encode_opt_String(pinnedFingerprint, serializer);
             sse_encode_StreamSink_receiver_event_Sse(events, serializer);
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 2,
+              funcId: 3,
               port: port_,
             );
           },
@@ -184,6 +217,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
             size,
             shapeDevices,
             preview,
+            pinnedFingerprint,
             events,
           ],
           apiImpl: this,
@@ -202,6 +236,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
       "size",
       "shapeDevices",
       "preview",
+      "pinnedFingerprint",
       "events",
     ],
   );
@@ -215,7 +250,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 4,
             port: port_,
           );
         },
@@ -242,7 +277,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -270,7 +305,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 6,
             port: port_,
           );
         },
@@ -304,7 +339,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 7,
             port: port_,
           );
         },
@@ -333,7 +368,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 8,
             port: port_,
           );
         },
@@ -361,7 +396,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -393,7 +428,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 9,
+              funcId: 10,
               port: port_,
             );
           },
@@ -422,7 +457,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 11,
             port: port_,
           );
         },

@@ -171,6 +171,25 @@ class PreviewInfo {
   };
 }
 
+/// Computador que o usuário aprovou; só ele é obedecido.
+class PairedComputer {
+  const PairedComputer({
+    required this.fingerprint,
+    required this.name,
+    required this.since,
+  });
+
+  final String fingerprint;
+  final String name;
+  final DateTime since;
+
+  /// Início da impressão digital, para o usuário reconhecer sem ver tudo.
+  String get shortFingerprint => fingerprint
+      .substring(0, fingerprint.length < 16 ? fingerprint.length : 16)
+      .replaceAllMapped(RegExp('.{4}'), (m) => '${m[0]} ')
+      .trim();
+}
+
 /// O que o emissor realmente está entregando.
 class StreamInfo {
   const StreamInfo({
@@ -260,6 +279,27 @@ class CameraChangedEvent extends SenderEvent {
   const CameraChangedEvent(this.preview);
 
   final PreviewInfo preview;
+}
+
+/// Um computador novo pede pareamento: o código precisa ser igual ao que ele mostra.
+class PairingRequestEvent extends SenderEvent {
+  const PairingRequestEvent({required this.code, required this.computer});
+
+  final String code;
+  final String computer;
+}
+
+/// O pareamento terminou: deu certo, foi recusado, expirou ou a conexão caiu.
+class PairingEndedEvent extends SenderEvent {
+  const PairingEndedEvent({
+    required this.paired,
+    required this.computer,
+    this.reason,
+  });
+
+  final bool paired;
+  final String computer;
+  final String? reason;
 }
 
 class ErrorEvent extends SenderEvent {

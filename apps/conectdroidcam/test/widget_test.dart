@@ -67,10 +67,7 @@ void main() {
     expect(find.text('20'), findsOneWidget);
     expect(find.text('30'), findsOneWidget);
     expect(find.text('Iniciar transmissão'), findsOneWidget);
-    expect(
-      find.textContaining('use apenas em uma rede em que você confia'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('A conexão é criptografada'), findsOneWidget);
   }, variant: androidOnly);
 
   testWidgets('sem resoluções extras, o seletor de outras não aparece', (
@@ -282,10 +279,7 @@ void main() {
       expect(find.textContaining('Nenhum celular encontrado'), findsOneWidget);
       expect(find.text('Horizontal'), findsOneWidget);
       expect(find.text('Vertical'), findsOneWidget);
-      expect(
-        find.textContaining('use apenas em uma rede em que você confia'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('A conexão é criptografada'), findsOneWidget);
     }, variant: linux);
 
     testWidgets('o celular achado na rede aparece e conecta com um toque', (
@@ -536,7 +530,7 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('Procurar de novo'), findsOneWidget);
-        expect(find.text('Esquecer celulares lembrados (1)'), findsOneWidget);
+        expect(find.text('Esquecer celulares pareados (1)'), findsOneWidget);
         final chave = tester.widget<SwitchListTile>(
           find.byType(SwitchListTile),
         );
@@ -570,12 +564,12 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Esquecer celulares lembrados (1)'));
+        await tester.tap(find.text('Esquecer celulares pareados (1)'));
         await tester.pumpAndSettle();
 
         expect(store.settings.trustedPhones, isEmpty);
         expect(
-          find.textContaining('Esquecer celulares lembrados'),
+          find.textContaining('Esquecer celulares pareados'),
           findsNothing,
         );
       },

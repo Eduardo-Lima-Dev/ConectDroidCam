@@ -6,7 +6,7 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `clear_session`, `command`, `failure`, `new`
+// These functions are ignored because they are not marked as `pub`: `clear_session`, `command`, `failure`, `load_identity`, `new`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
 
 /// Começa a procurar celulares. Cada aparição e cada saída chegam em `updates`; se a busca
@@ -27,6 +27,7 @@ Stream<ReceiverEvent> connectPhone({
   required OutputSize size,
   required List<ShapeDevice> shapeDevices,
   required bool preview,
+  String? pinnedFingerprint,
 }) => CdcCore.instance.api.crateApiConnectPhone(
   address: address,
   v4L2Device: v4L2Device,
@@ -34,11 +35,16 @@ Stream<ReceiverEvent> connectPhone({
   size: size,
   shapeDevices: shapeDevices,
   preview: preview,
+  pinnedFingerprint: pinnedFingerprint,
 );
 
 /// Encerra a sessão em andamento, se houver.
 Future<void> disconnectPhone() =>
     CdcCore.instance.api.crateApiDisconnectPhone();
+
+/// O usuário confirmou (ou recusou) o código de pareamento mostrado na tela.
+Future<String?> confirmPairing({required bool accept}) =>
+    CdcCore.instance.api.crateApiConfirmPairing(accept: accept);
 
 /// Pede ao celular que comece a transmitir neste tamanho e FPS.
 Future<String?> phoneStartStream({
@@ -294,6 +300,16 @@ enum ReceiverEventKind {
   /// O que o celular sabe fazer e seu estado: `modes`, `fps_options`, `streaming`,
   /// `front` e `can_switch`.
   capabilities,
+
+  /// O celular pediu pareamento: `text` = código de 6 dígitos que ele também mostra,
+  /// `text2` = impressão digital do celular.
+  pairingCode,
+
+  /// Pareamento concluído: `text` = impressão digital do celular, para guardar.
+  paired,
+
+  /// Pareamento recusado ou não concluído: `text` = motivo.
+  pairingDenied,
 
   /// O celular reportou um erro: `text` = código, `text2` = mensagem.
   senderError,

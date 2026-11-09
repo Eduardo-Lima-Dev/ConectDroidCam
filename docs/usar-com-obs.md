@@ -7,10 +7,20 @@ Passo a passo para ver a câmera do celular no OBS Studio, no Linux.
 
 ## 1. Conectar
 
-1. No celular, abra o ConectDroidCam e toque em **Iniciar transmissão**.
+1. No celular, abra o ConectDroidCam e deixe a prévia da câmera aberta. Não precisa tocar em
+   nada: o computador comanda a transmissão.
 2. No computador, abra o ConectDroidCam. O celular aparece na lista (ou digite o endereço que
-   o celular mostra). Na primeira vez, toque em **Conectar**; depois disso ele conecta sozinho.
-3. A janela mostra **Conectado a …**, a resolução real, as estatísticas e a **prévia**.
+   o celular mostra). Toque em **Conectar**.
+3. **Na primeira vez há um pareamento.** O computador mostra um código de 6 dígitos e o celular
+   abre uma pergunta com outro código. Se forem **o mesmo**, toque em "É o mesmo" nos dois. Se
+   forem diferentes, toque em "Não é o mesmo": alguém pode estar no meio da conexão. Depois
+   disso o celular e o computador se reconhecem sozinhos, e ele conecta automaticamente.
+4. A janela mostra **Conectado a …** e o **Controle do celular**: escolha a resolução e os
+   quadros por segundo, toque em **Iniciar transmissão** e, se quiser, troque entre a câmera
+   frontal e a traseira. Aparecem a resolução real, as estatísticas e a **prévia**.
+
+Para desfazer o pareamento: no celular, **Computadores pareados › Remover**; no computador,
+**Esquecer celulares pareados**. O pareamento precisa ser refeito depois disso.
 
 ## 2. Escolher o tamanho e o formato da imagem
 

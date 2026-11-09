@@ -51,6 +51,7 @@ class RustReceiverPlatform implements ReceiverPlatform {
     required ImageFormat format,
     required OutputSize size,
     required List<ShapeDevice> shapeDevices,
+    String? pinnedFingerprint,
   }) {
     return api
         .connectPhone(
@@ -79,6 +80,7 @@ class RustReceiverPlatform implements ReceiverPlatform {
               ),
           ],
           preview: true,
+          pinnedFingerprint: pinnedFingerprint,
         )
         .map(_toUpdate)
         // Falha ao abrir a conexão chega como erro do fluxo, não como evento.
@@ -145,6 +147,12 @@ class RustReceiverPlatform implements ReceiverPlatform {
             streaming: e.streaming,
           ),
         );
+      case api.ReceiverEventKind.pairingCode:
+        return PairingCodeUpdate(code: e.text, phoneFingerprint: e.text2);
+      case api.ReceiverEventKind.paired:
+        return PairedUpdate(e.text);
+      case api.ReceiverEventKind.pairingDenied:
+        return PairingDeniedUpdate(e.text);
       case api.ReceiverEventKind.senderError:
         return SenderErrorUpdate(e.text2.isEmpty ? e.text : e.text2);
       case api.ReceiverEventKind.notice:
@@ -167,6 +175,10 @@ class RustReceiverPlatform implements ReceiverPlatform {
 
   @override
   Future<void> disconnect() => api.disconnectPhone();
+
+  @override
+  Future<String?> confirmPairing(bool accept) async =>
+      api.confirmPairing(accept: accept);
 
   @override
   Future<String?> startStream(int width, int height, int fps) async =>

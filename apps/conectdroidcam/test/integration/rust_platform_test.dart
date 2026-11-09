@@ -27,6 +27,29 @@ String? _pular() {
   return null;
 }
 
+/// Conecta como o app: se o celular pedir pareamento, o "usuário" confirma o código.
+Stream<ReceiverUpdate> _connect(
+  RustReceiverPlatform platform, {
+  required String address,
+  required String? videoDevice,
+  ImageFormat format = ImageFormat.auto,
+}) {
+  return platform
+      .connect(
+        address: address,
+        videoDevice: videoDevice,
+        format: format,
+        size: OutputSize.fullHd,
+        shapeDevices: const [],
+      )
+      .map((update) {
+        if (update is PairingCodeUpdate) {
+          unawaited(platform.confirmPairing(true));
+        }
+        return update;
+      });
+}
+
 Future<int> _freePort() async {
   final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
   final port = socket.port;
@@ -52,6 +75,7 @@ void main() {
       final sender = await Process.start(_sender.path, [
         '--bind',
         '0.0.0.0', // como o celular: escuta em todas as interfaces
+        '--auto-pair',
         '--port',
         '$port',
         '--rotation',
@@ -84,16 +108,12 @@ void main() {
       expect(phone.address, endsWith(':$port'));
 
       // 2. Conexão e recebimento. O dispositivo "null" decodifica e descarta o vídeo.
-      final updates = await platform
-          .connect(
-            address: phone.address,
-            videoDevice: 'null',
-            format: ImageFormat.auto,
-            size: OutputSize.fullHd,
-            shapeDevices: const [],
-          )
-          .toList()
-          .timeout(const Duration(seconds: 30));
+      final updates = await _connect(
+        platform,
+        address: phone.address,
+        videoDevice: 'null',
+        format: ImageFormat.auto,
+      ).toList().timeout(const Duration(seconds: 30));
 
       expect(
         updates.last,
@@ -136,6 +156,7 @@ void main() {
     () async {
       final port = await _freePort();
       final sender = await Process.start(_sender.path, [
+        '--auto-pair',
         '--port',
         '$port',
         '--seconds',
@@ -146,16 +167,12 @@ void main() {
       unawaited(sender.stdout.drain());
       await Future<void>.delayed(const Duration(milliseconds: 500));
 
-      final updates = await platform
-          .connect(
-            address: '127.0.0.1:$port',
-            videoDevice: 'null',
-            format: ImageFormat.vertical,
-            size: OutputSize.fullHd,
-            shapeDevices: const [],
-          )
-          .toList()
-          .timeout(const Duration(seconds: 30));
+      final updates = await _connect(
+        platform,
+        address: '127.0.0.1:$port',
+        videoDevice: 'null',
+        format: ImageFormat.vertical,
+      ).toList().timeout(const Duration(seconds: 30));
 
       final output = updates.whereType<OutputUpdate>().first.video;
       expect((output.width, output.height), (1080, 1920));
@@ -165,16 +182,12 @@ void main() {
   );
 
   test('conectar a um celular que não existe explica o motivo', () async {
-    final updates = await platform
-        .connect(
-          address: '127.0.0.1:1',
-          videoDevice: null,
-          format: ImageFormat.auto,
-          size: OutputSize.fullHd,
-          shapeDevices: const [],
-        )
-        .toList()
-        .timeout(const Duration(seconds: 15));
+    final updates = await _connect(
+      platform,
+      address: '127.0.0.1:1',
+      videoDevice: null,
+      format: ImageFormat.auto,
+    ).toList().timeout(const Duration(seconds: 15));
 
     final failed = updates.whereType<FailedUpdate>().single;
     expect(failed.message, contains('não consegui conectar'));
@@ -185,6 +198,7 @@ void main() {
     () async {
       final port = await _freePort();
       final sender = await Process.start(_sender.path, [
+        '--auto-pair',
         '--port',
         '$port',
         '--seconds',
@@ -195,15 +209,12 @@ void main() {
       unawaited(sender.stdout.drain());
       await Future<void>.delayed(const Duration(milliseconds: 500));
 
-      final future = platform
-          .connect(
-            address: '127.0.0.1:$port',
-            videoDevice: null,
-            format: ImageFormat.auto,
-            size: OutputSize.fullHd,
-            shapeDevices: const [],
-          )
-          .toList();
+      final future = _connect(
+        platform,
+        address: '127.0.0.1:$port',
+        videoDevice: null,
+        format: ImageFormat.auto,
+      ).toList();
       await Future<void>.delayed(const Duration(seconds: 2));
       await platform.disconnect();
       final updates = await future.timeout(const Duration(seconds: 10));

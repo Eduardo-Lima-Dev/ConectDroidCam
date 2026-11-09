@@ -18,9 +18,16 @@ abstract interface class ReceiverPlatform {
     required ImageFormat format,
     required OutputSize size,
     required List<ShapeDevice> shapeDevices,
+
+    /// Impressão digital registrada do celular, ou `null` se ele ainda não foi pareado.
+    String? pinnedFingerprint,
   });
 
   Future<void> disconnect();
+
+  /// O usuário confirmou (ou recusou) o código de pareamento da tela. Devolve o motivo da
+  /// falha, ou `null`.
+  Future<String?> confirmPairing(bool accept);
 
   // Comandos ao celular da conexão em andamento. Cada um devolve o motivo da falha, ou
   // `null` se foi enviado; o resultado de verdade chega depois, como [CapabilitiesUpdate].

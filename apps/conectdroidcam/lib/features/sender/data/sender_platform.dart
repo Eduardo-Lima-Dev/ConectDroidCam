@@ -22,6 +22,13 @@ abstract interface class SenderPlatform {
   /// ligada o vídeo só fica parado por cerca de um segundo.
   Future<PreviewInfo> switchCamera({bool? front});
   Future<void> stopStreaming();
+
+  /// O usuário comparou o código e [accept] diz se é o mesmo nas duas telas.
+  Future<void> confirmPairing(bool accept);
+  Future<List<PairedComputer>> listPaired();
+
+  /// Revoga o pareamento: o computador é desconectado e volta a precisar do código.
+  Future<void> unpair(String fingerprint);
   Stream<SenderEvent> get events;
 }
 
@@ -136,6 +143,29 @@ class ChannelSenderPlatform implements SenderPlatform {
   Future<void> stopStreaming() => _call<void>('stopStreaming');
 
   @override
+  Future<void> confirmPairing(bool accept) =>
+      _call<void>('confirmPairing', {'accept': accept});
+
+  @override
+  Future<List<PairedComputer>> listPaired() async {
+    final raw = await _call<List<Object?>>('listPaired');
+    return [
+      for (final item in raw.cast<Map<Object?, Object?>>())
+        PairedComputer(
+          fingerprint: item['fingerprint']! as String,
+          name: item['name']! as String,
+          since: DateTime.fromMillisecondsSinceEpoch(
+            (item['since'] as num?)?.toInt() ?? 0,
+          ),
+        ),
+    ];
+  }
+
+  @override
+  Future<void> unpair(String fingerprint) =>
+      _call<void>('unpair', {'fingerprint': fingerprint});
+
+  @override
   Stream<SenderEvent> get events => _events
       .receiveBroadcastStream()
       .map((raw) => _parseEvent(raw as Map<Object?, Object?>))
@@ -178,6 +208,17 @@ class ChannelSenderPlatform implements SenderPlatform {
         );
       case 'camera':
         return CameraChangedEvent(_parsePreview(raw));
+      case 'pairing':
+        return PairingRequestEvent(
+          code: raw['code']! as String,
+          computer: (raw['computer'] as String?) ?? 'computador',
+        );
+      case 'pairingEnded':
+        return PairingEndedEvent(
+          paired: raw['paired']! as bool,
+          computer: (raw['computer'] as String?) ?? 'computador',
+          reason: raw['reason'] as String?,
+        );
       case 'error':
         return ErrorEvent(raw['message']! as String);
       default:

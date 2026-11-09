@@ -8,6 +8,7 @@ import 'fake_sender_platform.dart';
 
 void main() {
   group('comandos do computador', remoteTests);
+  group('pareamento', pairingTests);
 
   late FakeSenderPlatform platform;
   late ProviderContainer container;
@@ -151,5 +152,105 @@ void remoteTests() {
     );
     await tick();
     expect(state().preview!.isFront, isTrue);
+  });
+}
+
+void pairingTests() {
+  late FakeSenderPlatform platform;
+  late ProviderContainer container;
+
+  SenderState state() => container.read(senderControllerProvider);
+  Future<void> tick() => Future<void>.delayed(Duration.zero);
+
+  setUp(() async {
+    platform = FakeSenderPlatform()..permissionGranted = true;
+    container = ProviderContainer(
+      overrides: [senderPlatformProvider.overrideWithValue(platform)],
+    );
+    addTearDown(container.dispose);
+    await container.read(senderControllerProvider.notifier).start();
+  });
+
+  test('um computador novo pede pareamento e o código aparece', () async {
+    platform.emit(
+      const PairingRequestEvent(code: '482913', computer: 'meu-pc'),
+    );
+    await tick();
+    expect(state().pairing!.code, '482913');
+    expect(state().pairing!.computer, 'meu-pc');
+  });
+
+  test('confirmar manda a resposta e fecha o pedido', () async {
+    platform.emit(
+      const PairingRequestEvent(code: '482913', computer: 'meu-pc'),
+    );
+    await tick();
+    await container
+        .read(senderControllerProvider.notifier)
+        .confirmPairing(true);
+    expect(platform.pairingAnswers, [true]);
+    expect(state().pairing, isNull);
+  });
+
+  test('recusar manda a resposta contrária', () async {
+    platform.emit(
+      const PairingRequestEvent(code: '482913', computer: 'meu-pc'),
+    );
+    await tick();
+    await container
+        .read(senderControllerProvider.notifier)
+        .confirmPairing(false);
+    expect(platform.pairingAnswers, [false]);
+  });
+
+  test('pareamento concluído atualiza a lista e avisa', () async {
+    platform.paired = [
+      PairedComputer(
+        fingerprint: 'ab' * 32,
+        name: 'meu-pc',
+        since: DateTime(2026),
+      ),
+    ];
+    platform.emit(const PairingEndedEvent(paired: true, computer: 'meu-pc'));
+    await tick();
+    await tick();
+    expect(state().pairing, isNull);
+    expect(state().pairedComputers.single.name, 'meu-pc');
+    expect(state().notice, contains('meu-pc'));
+  });
+
+  test(
+    'pareamento que não deu certo mostra o motivo e fecha o pedido',
+    () async {
+      platform.emit(
+        const PairingRequestEvent(code: '482913', computer: 'meu-pc'),
+      );
+      await tick();
+      platform.emit(
+        const PairingEndedEvent(
+          paired: false,
+          computer: 'meu-pc',
+          reason: 'O pareamento expirou',
+        ),
+      );
+      await tick();
+      expect(state().pairing, isNull);
+      expect(state().notice, contains('expirou'));
+    },
+  );
+
+  test('remover o pareamento revoga e atualiza a lista', () async {
+    platform.paired = [
+      PairedComputer(
+        fingerprint: 'cd' * 32,
+        name: 'meu-pc',
+        since: DateTime(2026),
+      ),
+    ];
+    final controller = container.read(senderControllerProvider.notifier);
+    await controller.start();
+    await controller.unpair('cd' * 32);
+    expect(platform.unpaired, ['cd' * 32]);
+    expect(state().pairedComputers, isEmpty);
   });
 }

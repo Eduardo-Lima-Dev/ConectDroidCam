@@ -47,6 +47,8 @@ class SenderState {
     this.visibleAs,
     this.visibilityError,
     this.busy = false,
+    this.pairing,
+    this.pairedComputers = const [],
   });
 
   final SenderPhase phase;
@@ -82,6 +84,12 @@ class SenderState {
   /// Uma operação assíncrona está em andamento; os botões ficam desativados.
   final bool busy;
 
+  /// Computador pedindo pareamento, esperando o usuário conferir o código.
+  final PairingRequestEvent? pairing;
+
+  /// Computadores que o usuário aprovou.
+  final List<PairedComputer> pairedComputers;
+
   bool get isStreaming => phase == SenderPhase.streaming;
 
   /// Primeiro endereço de rede local, para mostrar ao usuário.
@@ -112,6 +120,8 @@ class SenderState {
     String? Function()? visibleAs,
     String? Function()? visibilityError,
     bool? busy,
+    PairingRequestEvent? Function()? pairing,
+    List<PairedComputer>? pairedComputers,
   }) {
     return SenderState(
       phase: phase ?? this.phase,
@@ -132,6 +142,8 @@ class SenderState {
           ? visibilityError()
           : this.visibilityError,
       busy: busy ?? this.busy,
+      pairing: pairing != null ? pairing() : this.pairing,
+      pairedComputers: pairedComputers ?? this.pairedComputers,
     );
   }
 }
@@ -186,6 +198,7 @@ class SenderController extends Notifier<SenderState> {
       final preview = await _platform.startPreview();
       final capabilities = await _platform.listModes();
       final addresses = await _platform.localAddresses();
+      final paired = await _platform.listPaired();
       _listen();
 
       // Mantém a escolha atual se ainda valer; senão, a primeira principal disponível.
@@ -195,12 +208,34 @@ class SenderController extends Notifier<SenderState> {
         preview: () => preview,
         capabilities: capabilities,
         addresses: addresses,
+        pairedComputers: paired,
         selected: selected,
         selectedFps: capabilities.clampFps(selected, state.selectedFps),
         busy: false,
       );
     } on SenderException catch (e) {
       _fail(e.message);
+    }
+  }
+
+  /// O usuário comparou o código com o do computador.
+  Future<void> confirmPairing(bool accept) async {
+    if (state.pairing == null) return;
+    state = state.copyWith(pairing: () => null);
+    try {
+      await _platform.confirmPairing(accept);
+    } on SenderException catch (e) {
+      state = state.copyWith(notice: () => e.message);
+    }
+  }
+
+  /// Remove um computador pareado; ele terá que parear de novo.
+  Future<void> unpair(String fingerprint) async {
+    try {
+      await _platform.unpair(fingerprint);
+      state = state.copyWith(pairedComputers: await _platform.listPaired());
+    } on SenderException catch (e) {
+      state = state.copyWith(notice: () => e.message);
     }
   }
 
@@ -353,6 +388,17 @@ class SenderController extends Notifier<SenderState> {
       case CameraChangedEvent(:final preview):
         state = state.copyWith(preview: () => preview);
         unawaited(_refreshModes());
+      case PairingRequestEvent():
+        state = state.copyWith(pairing: () => event);
+      case PairingEndedEvent(:final paired, :final computer, :final reason):
+        state = state.copyWith(
+          pairing: () => null,
+          notice: () => paired
+              ? '$computer foi pareado.'
+              : 'Pareamento com $computer não concluído'
+                    '${reason != null ? ': $reason' : ''}.',
+        );
+        if (paired) unawaited(_reloadPaired());
       case DiscoveryEvent(:final registered, :final name, :final error):
         state = state.copyWith(
           visibleAs: () => registered ? name : null,
@@ -362,6 +408,12 @@ class SenderController extends Notifier<SenderState> {
         // O código nativo já parou tudo; a interface só reflete o estado.
         _fail(message);
     }
+  }
+
+  Future<void> _reloadPaired() async {
+    try {
+      state = state.copyWith(pairedComputers: await _platform.listPaired());
+    } on SenderException catch (_) {}
   }
 
   /// Relê o que a câmera em uso oferece, depois de ela mudar.

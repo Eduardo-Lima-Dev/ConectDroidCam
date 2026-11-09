@@ -184,6 +184,27 @@ class CapabilitiesUpdate extends ReceiverUpdate {
   final PhoneCapabilities capabilities;
 }
 
+/// O celular não conhece este computador: confira se o código é o mesmo nas duas telas.
+class PairingCodeUpdate extends ReceiverUpdate {
+  const PairingCodeUpdate({required this.code, required this.phoneFingerprint});
+
+  final String code;
+  final String phoneFingerprint;
+}
+
+/// Pareamento concluído; guarde [phoneFingerprint] para só aceitar este celular da próxima vez.
+class PairedUpdate extends ReceiverUpdate {
+  const PairedUpdate(this.phoneFingerprint);
+
+  final String phoneFingerprint;
+}
+
+class PairingDeniedUpdate extends ReceiverUpdate {
+  const PairingDeniedUpdate(this.reason);
+
+  final String reason;
+}
+
 class ProfileUpdate extends ReceiverUpdate {
   const ProfileUpdate(this.video);
 
@@ -272,9 +293,15 @@ class ReceiverSettings {
   const ReceiverSettings({
     this.autoConnect = true,
     this.trustedPhones = const {},
+    this.fingerprints = const {},
     this.format = ImageFormat.auto,
     this.outputSize = OutputSize.fullHd,
   });
+
+  /// Impressão digital do certificado de cada celular pareado (chave: identificador do
+  /// celular, ou `addr:ip:porta` se foi digitado). Só um celular com esta impressão é
+  /// aceito depois do pareamento.
+  final Map<String, String> fingerprints;
 
   /// Formato da imagem escolhido pelo usuário.
   final ImageFormat format;
@@ -294,9 +321,11 @@ class ReceiverSettings {
   ReceiverSettings copyWith({
     bool? autoConnect,
     Set<String>? trustedPhones,
+    Map<String, String>? fingerprints,
     ImageFormat? format,
     OutputSize? outputSize,
   }) => ReceiverSettings(
+    fingerprints: fingerprints ?? this.fingerprints,
     autoConnect: autoConnect ?? this.autoConnect,
     trustedPhones: trustedPhones ?? this.trustedPhones,
     format: format ?? this.format,

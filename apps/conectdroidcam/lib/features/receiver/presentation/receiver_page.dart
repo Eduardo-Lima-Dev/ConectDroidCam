@@ -135,6 +135,10 @@ class _Content extends ConsumerWidget {
             color: theme.colorScheme.errorContainer,
             onColor: theme.colorScheme.onErrorContainer,
           ),
+        if (state.pairing != null) ...[
+          _PairingCard(state: state),
+          const SizedBox(height: 16),
+        ],
         _StatusBar(state: state),
         const SizedBox(height: 16),
         _PhoneCard(state: state),
@@ -142,8 +146,8 @@ class _Content extends ConsumerWidget {
         _OutputCard(state: state),
         const SizedBox(height: 16),
         Text(
-          'Esta versão ainda não tem pareamento nem criptografia: '
-          'use apenas em uma rede em que você confia.',
+          'A conexão é criptografada (TLS). Na primeira vez, confira o código de '
+          'pareamento nas duas telas; depois, só o celular pareado é aceito.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -317,7 +321,7 @@ class _FinderState extends ConsumerState<_Finder> {
                 onPressed: controller.forgetPhones,
                 icon: const Icon(Icons.delete_outline),
                 label: Text(
-                  'Esquecer celulares lembrados (${widget.state.trustedPhones.length})',
+                  'Esquecer celulares pareados (${widget.state.trustedPhones.length})',
                 ),
               ),
           ],
@@ -350,6 +354,75 @@ class _FinderState extends ConsumerState<_Finder> {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Mostra o código de pareamento para o usuário conferir com o do celular.
+class _PairingCard extends ConsumerWidget {
+  const _PairingCard({required this.state});
+
+  final ReceiverState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final controller = ref.read(receiverControllerProvider.notifier);
+    final prompt = state.pairing!;
+    final code = '${prompt.code.substring(0, 3)} ${prompt.code.substring(3)}';
+    return Card(
+      color: theme.colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Parear com ${state.phoneName ?? 'o celular'}',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Confira se este código é o mesmo que aparece no celular. '
+              'Se for diferente, alguém pode estar no meio da conexão: toque em '
+              '"Não é o mesmo".',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: SelectableText(
+                code,
+                style: theme.textTheme.displayMedium?.copyWith(
+                  fontFamily: 'monospace',
+                  letterSpacing: 6,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => controller.confirmPairing(true),
+                  icon: const Icon(Icons.check),
+                  label: const Text('É o mesmo'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => controller.confirmPairing(false),
+                  icon: const Icon(Icons.close),
+                  label: const Text('Não é o mesmo'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

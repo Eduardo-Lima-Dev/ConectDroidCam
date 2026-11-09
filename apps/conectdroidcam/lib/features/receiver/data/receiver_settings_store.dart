@@ -32,11 +32,18 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
       final json = jsonDecode(await _file.readAsString());
       if (json is! Map<String, Object?>) return const ReceiverSettings();
       final phones = json['trustedPhones'];
+      final prints = json['fingerprints'];
       return ReceiverSettings(
         autoConnect: json['autoConnect'] is bool
             ? json['autoConnect']! as bool
             : true,
         trustedPhones: {if (phones is List) ...phones.whereType<String>()},
+        fingerprints: {
+          if (prints is Map)
+            for (final e in prints.entries)
+              if (e.key is String && e.value is String)
+                e.key as String: e.value as String,
+        },
         outputSize: OutputSize.values.firstWhere(
           (z) => z.name == json['outputSize'],
           orElse: () => OutputSize.fullHd,
@@ -62,6 +69,7 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
           'format': settings.format.name,
           'outputSize': settings.outputSize.name,
           'trustedPhones': settings.trustedPhones.toList()..sort(),
+          'fingerprints': settings.fingerprints,
         }),
       );
     } on Object {
