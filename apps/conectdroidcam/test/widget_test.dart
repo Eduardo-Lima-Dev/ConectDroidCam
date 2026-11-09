@@ -1,4 +1,6 @@
 import 'package:conectdroidcam/app/app.dart';
+import 'package:conectdroidcam/features/receiver/application/receiver_controller.dart';
+import 'package:conectdroidcam/features/receiver/domain/receiver_models.dart';
 import 'package:conectdroidcam/features/sender/application/sender_controller.dart';
 import 'package:conectdroidcam/features/sender/domain/sender_models.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'features/receiver/fake_receiver_platform.dart';
 import 'features/sender/fake_sender_platform.dart';
 
 final androidOnly = TargetPlatformVariant.only(TargetPlatform.android);
@@ -246,14 +249,434 @@ void main() {
     variant: androidOnly,
   );
 
+  group('computador (Linux)', () {
+    final linux = TargetPlatformVariant.only(TargetPlatform.linux);
+
+    Future<FakeReceiverPlatform> pumpReceiver(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final platform = FakeReceiverPlatform();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            receiverPlatformProvider.overrideWithValue(platform),
+            receiverSettingsStoreProvider.overrideWithValue(
+              FakeSettingsStore(),
+            ),
+          ],
+          child: const ConectDroidCamApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return platform;
+    }
+
+    testWidgets('mostra os blocos do celular e da webcam virtual', (
+      tester,
+    ) async {
+      await pumpReceiver(tester);
+
+      expect(find.text('Celular'), findsOneWidget);
+      expect(find.text('Webcam virtual'), findsOneWidget);
+      expect(find.textContaining('Nenhum celular encontrado'), findsOneWidget);
+      expect(find.text('Horizontal'), findsOneWidget);
+      expect(find.text('Vertical'), findsOneWidget);
+      expect(
+        find.textContaining('use apenas em uma rede em que você confia'),
+        findsOneWidget,
+      );
+    }, variant: linux);
+
+    testWidgets('o celular achado na rede aparece e conecta com um toque', (
+      tester,
+    ) async {
+      final platform = await pumpReceiver(tester);
+
+      platform.phoneFound(
+        const Phone(
+          id: 'x',
+          name: 'ConectDroidCam Pixel',
+          address: '192.168.0.7:47821',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('ConectDroidCam Pixel'), findsOneWidget);
+      // O endereço também aparece como dica do campo de texto; aqui interessa o da lista.
+      expect(
+        find.descendant(
+          of: find.byType(ListTile),
+          matching: find.text('192.168.0.7:47821'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Conectar'));
+      await tester.pumpAndSettle();
+
+      expect(platform.lastAddress, '192.168.0.7:47821');
+      // Automático: o núcleo recebe a família e escolhe a webcam do tamanho e formato certos.
+      expect(platform.lastDevice, isNull);
+      expect(platform.lastShapeDevices, hasLength(6));
+      expect(find.text('Desconectar'), findsOneWidget);
+    }, variant: linux);
+
+    testWidgets('conecta pelo endereço digitado', (tester) async {
+      final platform = await pumpReceiver(tester);
+
+      await tester.enterText(
+        find.byKey(const Key('endereco')),
+        '192.168.0.9:47821',
+      );
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Conectar'));
+      await tester.pumpAndSettle();
+
+      expect(platform.lastAddress, '192.168.0.9:47821');
+    }, variant: linux);
+
+    testWidgets('mostra a resolução real, a rotação e as estatísticas', (
+      tester,
+    ) async {
+      final platform = await pumpReceiver(tester);
+      await tester.enterText(
+        find.byKey(const Key('endereco')),
+        '192.168.0.9:47821',
+      );
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Conectar'));
+      await tester.pumpAndSettle();
+
+      platform.send(
+        const HelloUpdate(deviceName: '2201117SL', platform: 'android'),
+      );
+      platform.send(
+        const ProfileUpdate(
+          IncomingVideo(
+            width: 1920,
+            height: 1080,
+            fps: 30,
+            bitrateKbps: 6000,
+            rotation: 90,
+          ),
+        ),
+      );
+      platform.send(
+        const OutputUpdate(
+          OutgoingVideo(
+            width: 1080,
+            height: 1920,
+            rotation: 90,
+            device: '/dev/video11',
+          ),
+        ),
+      );
+      platform.send(
+        const StatsUpdate(
+          LiveStats(fps: 29.8, kbps: 6800, delayMs: 12, frames: 300),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No cabeçalho de status e no cartão do celular.
+      expect(find.text('Conectado a 2201117SL'), findsNWidgets(2));
+      expect(find.text('Celular conectado'), findsOneWidget);
+      expect(find.text('Endereço: 192.168.0.9:47821'), findsOneWidget);
+      expect(find.text('Sistema: android'), findsOneWidget);
+      expect(find.text('Recebendo 1920×1080 a 30 FPS'), findsOneWidget);
+      expect(find.text('Imagem girada 90° para ficar em pé'), findsOneWidget);
+      expect(
+        find.text(
+          'Saída: 1080×1920 em ConectDroidCam FHD Vertical (/dev/video11)',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('atraso da rede 12 ms'), findsOneWidget);
+    }, variant: linux);
+
+    testWidgets('o cabeçalho diz o que está acontecendo, em cada etapa', (
+      tester,
+    ) async {
+      final platform = await pumpReceiver(tester);
+      expect(find.text('Procurando celulares na rede…'), findsOneWidget);
+
+      platform.phoneFound(
+        const Phone(id: 'x', name: 'Pixel', address: '192.168.0.7:47821'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1 celular encontrado na rede'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Conectar'));
+      await tester.pump();
+      expect(find.text('Conectando a Pixel…'), findsOneWidget);
+    }, variant: linux);
+
+    testWidgets('mostra a prévia quando o celular manda quadros', (
+      tester,
+    ) async {
+      final platform = await pumpReceiver(tester);
+      await tester.enterText(
+        find.byKey(const Key('endereco')),
+        '192.168.0.9:47821',
+      );
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Conectar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Aguardando a imagem do celular…'), findsOneWidget);
+
+      // PNG mínimo de 1×1 pixel: o Image.memory decodifica qualquer imagem válida.
+      platform.send(
+        PreviewUpdate(
+          Uint8List.fromList(const [
+            0x89,
+            0x50,
+            0x4E,
+            0x47,
+            0x0D,
+            0x0A,
+            0x1A,
+            0x0A,
+            0,
+            0,
+            0,
+            0x0D,
+            0x49,
+            0x48,
+            0x44,
+            0x52,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1,
+            8,
+            6,
+            0,
+            0,
+            0,
+            0x1F,
+            0x15,
+            0xC4,
+            0x89,
+            0,
+            0,
+            0,
+            0x0D,
+            0x49,
+            0x44,
+            0x41,
+            0x54,
+            0x78,
+            0x9C,
+            0x63,
+            0xF8,
+            0xFF,
+            0xFF,
+            0x3F,
+            0,
+            0x05,
+            0xFE,
+            0x02,
+            0xFE,
+            0xA7,
+            0x35,
+            0x81,
+            0x84,
+            0,
+            0,
+            0,
+            0,
+            0x49,
+            0x45,
+            0x4E,
+            0x44,
+            0xAE,
+            0x42,
+            0x60,
+            0x82,
+          ]),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Aguardando a imagem do celular…'), findsNothing);
+      expect(find.byType(Image), findsWidgets);
+    }, variant: linux);
+
+    testWidgets(
+      'mostra o selo de celular já usado e a opção de conexão automática',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final platform = FakeReceiverPlatform();
+        // Já usado e com a conexão automática desligada, para ele só aparecer na lista.
+        final store = FakeSettingsStore(
+          const ReceiverSettings(autoConnect: false, trustedPhones: {'x'}),
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              receiverPlatformProvider.overrideWithValue(platform),
+              receiverSettingsStoreProvider.overrideWithValue(store),
+            ],
+            child: const ConectDroidCamApp(),
+          ),
+        );
+        await tester.pumpAndSettle();
+        platform.phoneFound(
+          const Phone(id: 'x', name: 'Pixel', address: '192.168.0.7:47821'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('192.168.0.7:47821 · já usado antes'), findsOneWidget);
+        expect(
+          find.text('Conectar sozinho aos celulares já usados'),
+          findsOneWidget,
+        );
+        expect(find.text('Procurar de novo'), findsOneWidget);
+        expect(find.text('Esquecer celulares lembrados (1)'), findsOneWidget);
+        final chave = tester.widget<SwitchListTile>(
+          find.byType(SwitchListTile),
+        );
+        expect(chave.value, isFalse);
+
+        await tester.tap(find.byType(SwitchListTile));
+        await tester.pumpAndSettle();
+        expect(store.settings.autoConnect, isTrue);
+      },
+      variant: linux,
+    );
+
+    testWidgets(
+      'esquecer os celulares lembrados limpa a lista e o botão some',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final platform = FakeReceiverPlatform();
+        final store = FakeSettingsStore(
+          const ReceiverSettings(autoConnect: false, trustedPhones: {'x'}),
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              receiverPlatformProvider.overrideWithValue(platform),
+              receiverSettingsStoreProvider.overrideWithValue(store),
+            ],
+            child: const ConectDroidCamApp(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Esquecer celulares lembrados (1)'));
+        await tester.pumpAndSettle();
+
+        expect(store.settings.trustedPhones, isEmpty);
+        expect(
+          find.textContaining('Esquecer celulares lembrados'),
+          findsNothing,
+        );
+      },
+      variant: linux,
+    );
+
+    testWidgets('o formato tem três opções e trocá-lo é lembrado', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final platform = FakeReceiverPlatform();
+      final store = FakeSettingsStore();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            receiverPlatformProvider.overrideWithValue(platform),
+            receiverSettingsStoreProvider.overrideWithValue(store),
+          ],
+          child: const ConectDroidCamApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Full HD (1920×1080)'), findsOneWidget);
+      expect(find.text('HD (1280×720)'), findsOneWidget);
+      expect(find.text('2K (2560×1440)'), findsOneWidget);
+      expect(find.text('Automático'), findsOneWidget);
+      expect(find.text('Horizontal'), findsOneWidget);
+      expect(find.text('Vertical'), findsOneWidget);
+      // O aviso sobre o OBS fica à vista.
+      expect(find.textContaining('ConectDroidCam FHD Vertical'), findsWidgets);
+
+      await tester.tap(find.text('Vertical'));
+      await tester.pumpAndSettle();
+
+      expect(store.settings.format, ImageFormat.vertical);
+    }, variant: linux);
+
+    testWidgets('sem a webcam do ConectDroidCam, ensina a criá-la', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final platform = FakeReceiverPlatform()..devices = const [];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            receiverPlatformProvider.overrideWithValue(platform),
+            receiverSettingsStoreProvider.overrideWithValue(
+              FakeSettingsStore(),
+            ),
+          ],
+          child: const ConectDroidCamApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Nenhuma webcam virtual encontrada'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('linux-webcam-virtual.sh'), findsWidgets);
+    }, variant: linux);
+
+    testWidgets(
+      'núcleo que não carrega mostra o motivo e deixa tentar de novo',
+      (tester) async {
+        final platform = FakeReceiverPlatform()
+          ..initError = StateError('libcdc_ffi.so ausente');
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              receiverPlatformProvider.overrideWithValue(platform),
+              receiverSettingsStoreProvider.overrideWithValue(
+                FakeSettingsStore(),
+              ),
+            ],
+            child: const ConectDroidCamApp(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('O app não conseguiu iniciar'), findsOneWidget);
+        expect(find.textContaining('libcdc_ffi.so'), findsOneWidget);
+        expect(find.text('Tentar de novo'), findsOneWidget);
+      },
+      variant: linux,
+    );
+  });
+
   testWidgets(
-    'no computador, mostra a tela provisória do receptor',
+    'no macOS, o app do computador ainda não existe',
     (tester) async {
       await tester.pumpWidget(const ProviderScope(child: ConectDroidCamApp()));
       await tester.pumpAndSettle();
 
       expect(find.text('Receptor em desenvolvimento'), findsOneWidget);
     },
-    variant: TargetPlatformVariant.only(TargetPlatform.linux),
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
   );
 }

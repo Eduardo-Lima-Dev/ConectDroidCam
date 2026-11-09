@@ -94,6 +94,27 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
 
+# Núcleo em Rust (rust/crates/cdc-ffi): compilado com o cargo e empacotado em lib/, onde o
+# RPATH ($ORIGIN/lib) o encontra. Debug do app usa o cargo em debug; o resto, em release.
+set(CDC_RUST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../rust")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(CDC_CARGO_PROFILE_ARGS "")
+  set(CDC_CARGO_PROFILE_DIR "debug")
+else()
+  set(CDC_CARGO_PROFILE_ARGS "--release")
+  set(CDC_CARGO_PROFILE_DIR "release")
+endif()
+set(CDC_FFI_LIBRARY "${CDC_RUST_ROOT}/target/${CDC_CARGO_PROFILE_DIR}/libcdc_ffi.so")
+add_custom_target(cdc_ffi_build ALL
+  COMMAND cargo build ${CDC_CARGO_PROFILE_ARGS} -p cdc-ffi
+          --manifest-path "${CDC_RUST_ROOT}/Cargo.toml"
+  BYPRODUCTS "${CDC_FFI_LIBRARY}"
+  COMMENT "Compilando o núcleo Rust (cdc-ffi)"
+  VERBATIM)
+add_dependencies(${BINARY_NAME} cdc_ffi_build)
+install(FILES "${CDC_FFI_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 

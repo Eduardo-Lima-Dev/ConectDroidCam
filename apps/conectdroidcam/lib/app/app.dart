@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../features/receiver/presentation/receiver_page.dart';
 import '../features/receiver/presentation/receiver_placeholder_page.dart';
 import '../features/sender/presentation/sender_page.dart';
 
@@ -43,11 +44,12 @@ class _RoleGate extends StatelessWidget {
             'A câmera do iPhone entra em uma fase seguinte. '
             'Por enquanto, o emissor funciona no Android.',
       ),
+      TargetPlatform.linux => const ReceiverPage(),
       _ => const PlaceholderPage(
         title: 'Receptor em desenvolvimento',
         message:
-            'Este é o app do computador. A tela que recebe a câmera do '
-            'celular e a envia ao OBS ainda está sendo construída.',
+            'O app do computador ainda não existe para este sistema. '
+            'No momento, o receptor funciona no Linux.',
       ),
     };
   }

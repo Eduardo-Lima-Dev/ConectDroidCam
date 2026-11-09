@@ -1,0 +1,5 @@
+# Configuração do gerador da ponte Flutter ↔ Rust. Para regenerar: scripts/gerar-ponte.sh
+rust_input: crate::api
+rust_root: ../../rust/crates/cdc-ffi/
+dart_output: lib/src/rust
+dart_entrypoint_class_name: CdcCore
