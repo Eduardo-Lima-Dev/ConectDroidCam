@@ -139,8 +139,10 @@ jobs:
           merge-multiple: true
       - name: Renomear os arquivos com a versão do build
         run: |
-          mv dist/arquivos/ConectDroidCam.apk "dist/arquivos/ConectDroidCam-${GITHUB_RUN_NUMBER}.apk"
-          mv dist/arquivos/ConectDroidCam.flatpak "dist/arquivos/ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak"
+          ls -l dist/arquivos
+          # Cada artefato traz exatamente um arquivo; o nome dele dentro do artefato não importa.
+          mv dist/arquivos/*.apk "dist/arquivos/ConectDroidCam-${GITHUB_RUN_NUMBER}.apk"
+          mv dist/arquivos/*.flatpak "dist/arquivos/ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak"
       - name: Criar a release com os commits desde a anterior
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
