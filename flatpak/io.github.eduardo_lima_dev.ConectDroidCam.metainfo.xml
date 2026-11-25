@@ -1,21 +1,60 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Eduardo Lima -->
 <component type="desktop-application">
-  <id>dev.eduardolima.conectdroidcam</id>
-  <launchable type="desktop-id">dev.eduardolima.conectdroidcam.desktop</launchable>
+  <id>io.github.eduardo_lima_dev.ConectDroidCam</id>
+  <launchable type="desktop-id">io.github.eduardo_lima_dev.ConectDroidCam.desktop</launchable>
   <name>ConectDroidCam</name>
-  <summary>Use a câmera do celular como webcam</summary>
+  <summary>Use your phone camera as a webcam</summary>
+  <summary xml:lang="pt-BR">Use a câmera do celular como webcam</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>LicenseRef-proprietary</project_license>
-  <developer id="dev.eduardolima">
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.eduardo_lima_dev">
     <name>Eduardo Lima</name>
   </developer>
+  <url type="homepage">https://github.com/Eduardo-Lima-Dev/ConectDroidCam</url>
+  <url type="bugtracker">https://github.com/Eduardo-Lima-Dev/ConectDroidCam/issues</url>
+  <url type="vcs-browser">https://github.com/Eduardo-Lima-Dev/ConectDroidCam</url>
   <description>
-    <p>O ConectDroidCam transforma a câmera do celular em uma webcam do computador, pela rede Wi-Fi.
-    O celular e o computador se pareiam uma vez e a conexão é criptografada.</p>
-    <p>O computador escolhe a resolução e os quadros por segundo, inicia e para a transmissão e troca
-    entre a câmera frontal e a traseira. A imagem aparece como webcam virtual no OBS e em outros programas.</p>
+    <p>ConectDroidCam turns your Android phone camera into a computer webcam over Wi-Fi.</p>
+    <p xml:lang="pt-BR">O ConectDroidCam transforma a câmera do celular Android em uma webcam do computador, pela rede Wi-Fi.</p>
+    <p>Your phone and computer pair once by verifying a 6-digit code on both screens, establishing an encrypted TLS connection. From your computer you can choose resolution and frame rate, start or stop streaming, and switch between front and back cameras.</p>
+    <p xml:lang="pt-BR">O celular e o computador se pareiam uma vez, conferindo um código de 6 dígitos nas duas telas, e a conexão é criptografada. Pelo computador você escolhe a resolução e os quadros por segundo, inicia e para a transmissão e troca entre a câmera frontal e a traseira.</p>
+    <p>The video appears as a virtual webcam ready for OBS Studio, web browsers, and video calling apps. Virtual webcam output requires the v4l2loopback kernel module to be installed on the host Linux system.</p>
+    <p xml:lang="pt-BR">A imagem aparece como uma webcam virtual, que o OBS, o navegador e programas de chamada de vídeo usam. A webcam virtual depende do módulo v4l2loopback do Linux, que precisa ser instalado no sistema.</p>
   </description>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main window searching for phones on the network, with the virtual webcam settings</caption>
+      <caption xml:lang="pt-BR">Janela principal procurando celulares na rede, com as configurações da webcam virtual</caption>
+      <image>https://raw.githubusercontent.com/Eduardo-Lima-Dev/ConectDroidCam/v0.1.0/flatpak/screenshots/main.png</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+  </categories>
+  <keywords>
+    <keyword>webcam</keyword>
+    <keyword>camera</keyword>
+    <keyword>android</keyword>
+    <keyword>obs</keyword>
+  </keywords>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <branding>
+    <color type="primary" scheme_preference="light">#2f80ed</color>
+    <color type="primary" scheme_preference="dark">#1b4b8f</color>
+  </branding>
   <releases>
-    <release version="0.1.0" date="2026-11-25"/>
+    <release version="0.1.0" date="2026-11-25">
+      <url type="details">https://github.com/Eduardo-Lima-Dev/ConectDroidCam/releases/tag/v0.1.0</url>
+      <description>
+        <p>Initial release: 6-digit pairing code, encrypted TLS connection, remote camera and resolution control from your computer, and fixed-size virtual webcam output.</p>
+        <p xml:lang="pt-BR">Primeira versão: pareamento com código de 6 dígitos, conexão criptografada, controle do celular pelo computador e webcam virtual de tamanho fixo.</p>
+      </description>
+    </release>
   </releases>
 </component>

@@ -172,18 +172,19 @@ O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imag
 Objetivo: instalar o receptor do Linux por `flatpak install flathub <id>`. **Nada disto foi feito**; esta seção é o plano, com o que já foi verificado e o que ainda precisa ser pesquisado.
 
 ### Verificado nesta máquina
-- `flatpak` 1.18.4 está instalado; o **`flatpak-builder` não**.
-- O runtime `org.freedesktop.Platform` está em 25.08 e 26.08. O OBS em Flatpak usa o **26.08**.
+- `flatpak` 1.18 está instalado.
+- O runtime `org.gnome.Platform//51` (base Freedesktop `26.08`) e o `org.freedesktop.Platform` `25.08`/`26.08` estão em uso.
 - O app do Linux compila em release e o pacote (28 MB, sem bibliotecas faltando) roda fora da pasta do projeto, com o `libcdc_ffi.so` ao lado do executável.
-- O repositório é **privado** e **não há arquivo de licença**.
-- O identificador atual do app no Linux é `dev.eduardolima.conectdroidcam`.
+- `LICENSE` (GPL-3.0-or-later) foi adicionado na raiz.
+- O identificador do app no Linux é `io.github.eduardo_lima_dev.ConectDroidCam` (o Android, o iOS e o macOS continuam com `dev.eduardolima.conectdroidcam`).
+- O template do Flathub (`flatpak/flathub/flatpak-flutter.yml`), o script gerador (`scripts/flatpak/preparar-flathub.sh`), os metadados AppStream e `.desktop` bilíngues e o guia (`flatpak/flathub/PUBLICAR-NO-FLATHUB.md`) já estão organizados.
 
-### Decisões suas que bloqueiam
-| Decisão | Por quê |
+### Decisões e ações suas que bloqueiam a submissão
+| Ação | Por quê |
 |---|---|
-| **Licença de código aberto** (MIT, Apache-2.0, GPL-3.0...) | O Flathub só aceita software livre; hoje não há `LICENSE`. A escolha também afeta o FFmpeg que o app embarca (o FFmpeg em si é LGPL ou GPL conforme a compilação) |
-| **Repositório público** | O Flathub compila a partir de uma fonte pública (tag ou arquivo). Um repositório privado não serve; pode ser público só o código, depois de revisar o que não deve vazar |
-| **Identificador do app** | O Flathub exige um ID que o autor comprove: um domínio que você controle (`dev.eduardolima.…` exige ser dono de `eduardolima.dev`) ou, sem domínio, `io.github.Eduardo-Lima-Dev.ConectDroidCam`. Trocar o ID mexe no `.desktop`, nos ícones e no `APPLICATION_ID` do CMake |
+| **Capturar tela (`flatpak/screenshots/main.png`)** | O Flathub exige ao menos uma captura de tela válida apontando para uma tag imutável (`v0.1.0`) |
+| **Tornar o repositório público no GitHub e criar a tag `v0.1.0`** | O Flathub compila a partir de um repositório e tag públicos |
+| **Executar `preparar-flathub.sh` e abrir o PR em `flathub/flathub`** | A submissão e revisão acontecem no fork de `flathub/flathub` (branch `new-pr`) |
 
 ### O que o Flatpak precisa resolver
 1. **O módulo `v4l2loopback` é do kernel e não cabe num Flatpak.** O app depende das seis webcams virtuais, criadas com `sudo` no sistema. O Flatpak **não consegue** instalar o módulo nem rodar `sudo`. Caminho provável: o usuário instala o `v4l2loopback` pelo pacote da distribuição e roda o script de instalação no host (ou um pacote pequeno do host, como PKGBUILD ou `.deb`, que faça isso). O app precisa **detectar a falta e explicar** o que fazer, como já faz. Em máquinas com Secure Boot, o módulo ainda precisa ser assinado. **A aceitação disso pelo Flathub precisa ser confirmada na política atual.**

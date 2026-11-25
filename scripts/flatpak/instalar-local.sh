@@ -7,7 +7,7 @@
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-APP_ID=dev.eduardolima.conectdroidcam
+APP_ID=io.github.eduardo_lima_dev.ConectDroidCam
 MANIFESTO="$RAIZ/flatpak/$APP_ID.yml"
 BUILD="$RAIZ/dist/flatpak-build"
 REPO="$RAIZ/dist/flatpak-repo"
