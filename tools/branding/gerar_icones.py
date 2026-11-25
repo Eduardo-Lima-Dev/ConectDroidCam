@@ -34,7 +34,7 @@ APP = RAIZ / "apps" / "conectdroidcam"
 RES = APP / "android" / "app" / "src" / "main" / "res"
 LANCZOS = Image.Resampling.LANCZOS
 
-ID_APP = "dev.eduardolima.conectdroidcam"
+ID_APP = "io.github.eduardo_lima_dev.ConectDroidCam"
 
 DENSIDADES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
 
@@ -278,21 +278,23 @@ def gerar_linux(logo: Image.Image) -> None:
     for px in (16, 22, 24, 32, 48, 64, 128, 256, 512):
         salvar(redimensionar(logo, px), base / f"{px}x{px}" / "apps" / f"{ID_APP}.png")
 
-    escrever(
-        RAIZ / "packaging" / "linux" / f"{ID_APP}.desktop",
-        f"""[Desktop Entry]
+    desktop = f"""[Desktop Entry]
 Type=Application
 Name=ConectDroidCam
-GenericName=Webcam pelo celular
-Comment=Use a câmera do celular como webcam no computador
+GenericName=Phone camera as webcam
+GenericName[pt_BR]=Câmera do celular como webcam
+Comment=Use your phone camera as a webcam on your computer
+Comment[pt_BR]=Use a câmera do celular como webcam no computador
 Exec=conectdroidcam
 Icon={ID_APP}
 Terminal=false
-Categories=AudioVideo;Video;Network;
-Keywords=webcam;camera;celular;obs;
+Categories=AudioVideo;Video;
+Keywords=webcam;camera;phone;android;obs;
+Keywords[pt_BR]=webcam;camera;celular;android;obs;
 StartupWMClass={ID_APP}
-""",
-    )
+"""
+    escrever(RAIZ / "packaging" / "linux" / f"{ID_APP}.desktop", desktop)
+    escrever(RAIZ / "flatpak" / f"{ID_APP}.desktop", desktop)
 
 
 def gerar_flutter(logo: Image.Image) -> None:

@@ -1,6 +1,7 @@
 import 'package:conectdroidcam/app/app.dart';
 import 'package:conectdroidcam/features/receiver/application/receiver_controller.dart';
 import 'package:conectdroidcam/features/receiver/domain/receiver_models.dart';
+import 'package:conectdroidcam/features/receiver/presentation/receiver_page.dart';
 import 'package:conectdroidcam/features/sender/application/sender_controller.dart';
 import 'package:conectdroidcam/features/sender/domain/sender_models.dart';
 import 'package:flutter/material.dart';
@@ -636,6 +637,20 @@ void main() {
       );
       expect(find.textContaining('linux-webcam-virtual.sh'), findsWidgets);
     }, variant: linux);
+
+    test('comando de setup da webcam virtual muda dentro do Flatpak', () {
+      expect(
+        virtualWebcamSetupCommand(environment: const {}),
+        'sudo scripts/setup/linux-webcam-virtual.sh',
+      );
+      expect(
+        virtualWebcamSetupCommand(
+          environment: const {'FLATPAK_ID': 'io.github.eduardo_lima_dev.ConectDroidCam'},
+        ),
+        'flatpak run --command=cat io.github.eduardo_lima_dev.ConectDroidCam '
+        '/app/share/conectdroidcam/linux-webcam-virtual.sh | sudo bash',
+      );
+    });
 
     testWidgets(
       'núcleo que não carrega mostra o motivo e deixa tentar de novo',

@@ -6,7 +6,7 @@
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rustls::Connection;
 
@@ -65,11 +65,15 @@ fn pump(mut conn: Connection, mut net: TcpStream, mut local: TcpStream) {
     let mut buf = vec![0u8; 64 * 1024];
     // Bytes já decifrados que o par local ainda não aceitou.
     let mut to_local: Vec<u8> = Vec::new();
+    // Bytes claros do par local que o rustls ainda não aceitou para cifrar.
+    let mut to_net: Vec<u8> = Vec::new();
     let mut local_closed = false;
     let mut net_closed = false;
 
     loop {
         let mut progressed = false;
+        // O rustls não tem mais nada decifrado para entregar agora.
+        let mut reader_drained = false;
 
         // Rede -> TLS.
         if !net_closed && conn.wants_read() {
@@ -78,24 +82,33 @@ fn pump(mut conn: Connection, mut net: TcpStream, mut local: TcpStream) {
                 Ok(_) => {
                     progressed = true;
                     if conn.process_new_packets().is_err() {
-                        break;
+                        net_closed = true;
                     }
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(_) => break,
+                // Conexão derrubada (por exemplo, reset): o que já chegou e foi decifrado
+                // ainda é entregue antes de fechar.
+                Err(_) => net_closed = true,
             }
         }
 
         // TLS -> par local.
         if to_local.is_empty() {
             match conn.reader().read(&mut buf) {
-                Ok(0) => net_closed = true, // close_notify do outro lado
+                Ok(0) => {
+                    // close_notify do outro lado
+                    net_closed = true;
+                    reader_drained = true;
+                }
                 Ok(n) => {
                     progressed = true;
                     to_local.extend_from_slice(&buf[..n]);
                 }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(_) => net_closed = true,
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => reader_drained = true,
+                Err(_) => {
+                    net_closed = true;
+                    reader_drained = true;
+                }
             }
         }
         if !to_local.is_empty() {
@@ -105,12 +118,31 @@ fn pump(mut conn: Connection, mut net: TcpStream, mut local: TcpStream) {
                     to_local.drain(..n);
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(_) => break,
+                // O programa fechou a conexão: ninguém vai ler o resto.
+                Err(_) => {
+                    to_local.clear();
+                    if !local_closed {
+                        local_closed = true;
+                        conn.send_close_notify();
+                    }
+                }
             }
         }
 
-        // Par local -> TLS.
-        if !local_closed {
+        // Par local -> TLS. O rustls limita o que aceita antes de cifrar e enviar: quando o
+        // limite enche, `write` devolve 0. O que não coube espera em `to_net`, e o par local só
+        // volta a ser lido quando tudo foi aceito, o que segura quem escreve sem perder bytes.
+        if !to_net.is_empty() {
+            match conn.writer().write(&to_net) {
+                Ok(n) if n > 0 => {
+                    progressed = true;
+                    to_net.drain(..n);
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        if !local_closed && to_net.is_empty() {
             match local.read(&mut buf) {
                 Ok(0) => {
                     local_closed = true;
@@ -118,12 +150,15 @@ fn pump(mut conn: Connection, mut net: TcpStream, mut local: TcpStream) {
                 }
                 Ok(n) => {
                     progressed = true;
-                    if conn.writer().write_all(&buf[..n]).is_err() {
-                        break;
-                    }
+                    to_net.extend_from_slice(&buf[..n]);
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(_) => break,
+                // Fechamento com reset (o programa saiu com dados não lidos): é um fim como
+                // outro. O que ele escreveu antes ainda é cifrado e enviado.
+                Err(_) => {
+                    local_closed = true;
+                    conn.send_close_notify();
+                }
             }
         }
 
@@ -140,7 +175,7 @@ fn pump(mut conn: Connection, mut net: TcpStream, mut local: TcpStream) {
             }
         }
 
-        if net_closed && to_local.is_empty() {
+        if net_closed && to_local.is_empty() && reader_drained {
             break;
         }
         if local_closed && !conn.wants_write() {
@@ -152,5 +187,26 @@ fn pump(mut conn: Connection, mut net: TcpStream, mut local: TcpStream) {
     }
 
     let _ = local.shutdown(Shutdown::Both);
+    close_gracefully(net);
+}
+
+/// Quanto esperar o outro lado fechar depois de encerrarmos o envio.
+const LINGER: Duration = Duration::from_secs(2);
+
+/// Encerra só o envio e escuta até o outro lado fechar (ou até [`LINGER`]). Fechar tudo de uma
+/// vez faz o sistema responder com reset a qualquer dado que ainda chegue, e o outro lado
+/// pode perder as últimas mensagens que já tinha recebido, como um `pair.denied`.
+fn close_gracefully(mut net: TcpStream) {
+    let _ = net.shutdown(Shutdown::Write);
+    let _ = net.set_nonblocking(false);
+    let _ = net.set_read_timeout(Some(LINGER));
+    let fim = Instant::now() + LINGER;
+    let mut descarte = [0u8; 4096];
+    while Instant::now() < fim {
+        match net.read(&mut descarte) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+    }
     let _ = net.shutdown(Shutdown::Both);
 }

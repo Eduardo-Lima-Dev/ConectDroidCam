@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -608,7 +610,7 @@ class _OutputCard extends ConsumerWidget {
 
   final ReceiverState state;
 
-  static const setupCommand = 'sudo scripts/setup/linux-webcam-virtual.sh';
+  static String get setupCommand => virtualWebcamSetupCommand();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -673,7 +675,7 @@ class _OutputCard extends ConsumerWidget {
               IconButton(
                 tooltip: 'Copiar o comando de instalação',
                 onPressed: () =>
-                    Clipboard.setData(const ClipboardData(text: setupCommand)),
+                    Clipboard.setData(ClipboardData(text: setupCommand)),
                 icon: const Icon(Icons.content_copy),
               ),
             ],
@@ -845,6 +847,20 @@ class _PreviewBox extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Comando para criar as webcams virtuais no host Linux.
+///
+/// Dentro do Flatpak, aponta para o script empacotado junto do aplicativo, já que
+/// o usuário final não tem o repositório clonado.
+String virtualWebcamSetupCommand({Map<String, String>? environment}) {
+  final env = environment ?? Platform.environment;
+  final flatpakId = env['FLATPAK_ID'];
+  if (flatpakId != null && flatpakId.isNotEmpty) {
+    return 'flatpak run --command=cat $flatpakId '
+        '/app/share/conectdroidcam/linux-webcam-virtual.sh | sudo bash';
+  }
+  return 'sudo scripts/setup/linux-webcam-virtual.sh';
 }
 
 /// "ConectDroidCam FHD Vertical (/dev/video11)", ou só o caminho se o nome não for conhecido.

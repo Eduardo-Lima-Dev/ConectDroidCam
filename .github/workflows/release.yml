@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_ID: dev.eduardolima.conectdroidcam
+  APP_ID: io.github.eduardo_lima_dev.ConectDroidCam
   BUNDLE: ConectDroidCam.flatpak
 
 jobs:

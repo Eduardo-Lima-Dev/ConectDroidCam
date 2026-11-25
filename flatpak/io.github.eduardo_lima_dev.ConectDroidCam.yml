@@ -1,7 +1,7 @@
 # Manifesto do Flatpak do ConectDroidCam.
 # Build local (ver scripts/flatpak/instalar-local.sh). Antes de rodar, gere o bundle de release:
 #   cd apps/conectdroidcam && flutter build linux --release
-app-id: dev.eduardolima.conectdroidcam
+app-id: io.github.eduardo_lima_dev.ConectDroidCam
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
@@ -44,16 +44,27 @@ modules:
       # libcdc_ffi.so em lib/ (RPATH $ORIGIN/lib) são encontrados a partir de /app/bin.
       - mkdir -p /app/bin
       - cp -r bundle/. /app/bin/
-      - install -Dm644 dev.eduardolima.conectdroidcam.desktop /app/share/applications/dev.eduardolima.conectdroidcam.desktop
-      - install -Dm644 dev.eduardolima.conectdroidcam.metainfo.xml /app/share/metainfo/dev.eduardolima.conectdroidcam.metainfo.xml
-      - install -Dm644 dev.eduardolima.conectdroidcam.png /app/share/icons/hicolor/512x512/apps/dev.eduardolima.conectdroidcam.png
+      - install -Dm644 io.github.eduardo_lima_dev.ConectDroidCam.desktop /app/share/applications/io.github.eduardo_lima_dev.ConectDroidCam.desktop
+      - install -Dm644 io.github.eduardo_lima_dev.ConectDroidCam.metainfo.xml /app/share/metainfo/io.github.eduardo_lima_dev.ConectDroidCam.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/io.github.eduardo_lima_dev.ConectDroidCam/LICENSE
+      - install -Dm755 linux-webcam-virtual.sh /app/share/conectdroidcam/linux-webcam-virtual.sh
+      - >-
+        for sz in 16 22 24 32 48 64 128 256 512; do
+          install -Dm644 "hicolor/${sz}x${sz}/apps/io.github.eduardo_lima_dev.ConectDroidCam.png" \
+            "/app/share/icons/hicolor/${sz}x${sz}/apps/io.github.eduardo_lima_dev.ConectDroidCam.png";
+        done
     sources:
       - type: dir
         path: ../apps/conectdroidcam/build/linux/x64/release/bundle
         dest: bundle
       - type: file
-        path: dev.eduardolima.conectdroidcam.desktop
+        path: io.github.eduardo_lima_dev.ConectDroidCam.desktop
       - type: file
-        path: dev.eduardolima.conectdroidcam.metainfo.xml
+        path: io.github.eduardo_lima_dev.ConectDroidCam.metainfo.xml
       - type: file
-        path: dev.eduardolima.conectdroidcam.png
+        path: ../LICENSE
+      - type: file
+        path: ../scripts/setup/linux-webcam-virtual.sh
+      - type: dir
+        path: ../packaging/linux/icons/hicolor
+        dest: hicolor
