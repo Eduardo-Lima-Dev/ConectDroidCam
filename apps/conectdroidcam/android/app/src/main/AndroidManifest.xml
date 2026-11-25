@@ -4,6 +4,9 @@
     <!-- Para anunciar o celular na rede local (mDNS), assim o computador o acha sozinho. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <!-- Para o atualizador do app: instala a versão nova baixada das releases do GitHub,
+         sempre com a confirmação do usuário. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <application

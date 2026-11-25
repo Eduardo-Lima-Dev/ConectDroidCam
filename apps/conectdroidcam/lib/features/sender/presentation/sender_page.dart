@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/sender_controller.dart';
 import '../../../shared/widgets/brand_logo.dart';
 import '../domain/sender_models.dart';
+import '../../update/application/update_controller.dart';
+import '../../update/presentation/update_banner.dart';
 
 /// Tela do celular: prévia da câmera, escolha da resolução e controle da transmissão.
 class SenderPage extends ConsumerStatefulWidget {
@@ -37,6 +39,8 @@ class _SenderPageState extends ConsumerState<SenderPage> {
     // Depois do primeiro frame, para o pedido de permissão não competir com a montagem.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(senderControllerProvider.notifier).start();
+      // Procura versão nova ao abrir; sem internet, simplesmente não aparece aviso.
+      ref.read(updateControllerProvider.notifier).check();
     });
   }
 
@@ -436,6 +440,8 @@ class _ControlPanel extends ConsumerWidget {
         ),
         const SizedBox(height: 4),
         _StatusLine(state: state),
+        const SizedBox(height: 8),
+        const UpdateBanner(),
         const SizedBox(height: 12),
         // O botão principal fica no alto, sempre visível, sem precisar rolar o painel.
         if (state.isStreaming)
