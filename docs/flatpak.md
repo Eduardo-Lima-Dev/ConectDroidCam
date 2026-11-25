@@ -18,10 +18,13 @@ O script gera o bundle de release (`flutter build linux --release`), monta o Fla
 
 ## Build automático (GitHub Actions)
 
-O workflow [`.github/workflows/flatpak.yml`](../.github/workflows/flatpak.yml) roda:
+O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) roda:
 
-- a cada push na `main` e a cada PR para a `main`: gera o `ConectDroidCam.flatpak` e o publica como artefato do workflow (aba **Actions**, no item da execução);
-- a cada tag `v*`: anexa o mesmo arquivo à GitHub Release.
+- a cada PR para a `main`: gera o `ConectDroidCam.flatpak` e o APK como artefatos (o CI, com os testes, roda pelo `ci.yml`);
+- a cada push na `main`: roda o CI, o APK e o Flatpak e, **só se os três passarem**, cria uma release automática `build-N` com os dois arquivos e as notas tiradas dos commits desde a release anterior;
+- a cada tag `v*`: anexa o `.flatpak` à release dessa tag.
+
+O APK da release é assinado com a chave de debug enquanto não houver uma chave de release nos segredos do repositório.
 
 Enquanto o repositório for privado, só quem tem acesso consegue baixar o artefato ou a release.
 

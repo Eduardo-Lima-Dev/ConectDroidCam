@@ -1,9 +1,9 @@
-name: Flatpak
+name: Build e release
 
 # Gera o pacote .flatpak do app Linux e o APK do Android a cada push na main (e a cada PR para a
-# main). A cada push na main, cria uma release automática (build-N) com os dois arquivos e as
-# notas tiradas dos commits desde a release anterior. Ao criar uma tag v*, o .flatpak vai para
-# a release dessa tag.
+# main). Num push na main também roda o CI (testes) e, só depois de CI, APK e Flatpak passarem,
+# cria uma release automática (build-N) com os dois arquivos e as notas tiradas dos commits
+# desde a release anterior. Ao criar uma tag v*, o .flatpak vai para a release dessa tag.
 on:
   push:
     branches: [main]
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: flatpak-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -24,6 +24,12 @@ env:
   BUNDLE: ConectDroidCam.flatpak
 
 jobs:
+  # Nos PRs o ci.yml roda sozinho; aqui ele só roda num push, para a release esperar os testes.
+  ci:
+    name: CI (testes)
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/ci.yml
+
   apk:
     name: Gerar o APK (Android)
     runs-on: ubuntu-24.04
@@ -119,7 +125,7 @@ jobs:
   release:
     name: Release automática (só em push na main)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [flatpak, apk]
+    needs: [ci, flatpak, apk]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -157,8 +163,6 @@ jobs:
             echo
             echo "- **ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak**: app do Linux. Instale com \`flatpak install --user ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak\`."
             echo "- **ConectDroidCam-${GITHUB_RUN_NUMBER}.apk**: app do Android (assinado com a chave de debug por enquanto)."
-            echo
-            echo "_Não há versão para Windows nesta release._"
           } > notas.md
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
