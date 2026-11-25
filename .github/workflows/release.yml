@@ -1,0 +1,171 @@
+name: Build e release
+
+# Gera o pacote .flatpak do app Linux e o APK do Android a cada push na main (e a cada PR para a
+# main). Num push na main também roda o CI (testes) e, só depois de CI, APK e Flatpak passarem,
+# cria uma release automática (build-N) com os dois arquivos e as notas tiradas dos commits
+# desde a release anterior. Ao criar uma tag v*, o .flatpak vai para a release dessa tag.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ID: dev.eduardolima.conectdroidcam
+  BUNDLE: ConectDroidCam.flatpak
+
+jobs:
+  # Nos PRs o ci.yml roda sozinho; aqui ele só roda num push, para a release esperar os testes.
+  ci:
+    name: CI (testes)
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/ci.yml
+
+  apk:
+    name: Gerar o APK (Android)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Ler a versão fixada do Flutter
+        id: versao
+        run: echo "flutter=$(tr -d '[:space:]' < .flutter-version)" >> "$GITHUB_OUTPUT"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ steps.versao.outputs.flutter }}
+          channel: stable
+          cache: true
+      - name: APK de release
+        working-directory: apps/conectdroidcam
+        run: |
+          flutter pub get
+          flutter build apk --release
+      - name: Copiar com o nome do app
+        run: cp apps/conectdroidcam/build/app/outputs/flutter-apk/app-release.apk dist-apk-ConectDroidCam.apk
+      - name: Guardar como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: ConectDroidCam.apk
+          path: dist-apk-ConectDroidCam.apk
+          if-no-files-found: error
+
+  flatpak:
+    name: Gerar o .flatpak
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # só usado para anexar o arquivo à release, em tags v*
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependências do build do Linux (GTK, CMake, Ninja)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      - name: Ferramentas do Flatpak
+        run: |
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Runtime e SDK do GNOME 51
+        run: flatpak install --user -y --noninteractive flathub org.gnome.Platform//51 org.gnome.Sdk//51
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Ler a versão fixada do Flutter
+        id: versao
+        run: echo "flutter=$(tr -d '[:space:]' < .flutter-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ steps.versao.outputs.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Bundle de release do Linux
+        working-directory: apps/conectdroidcam
+        run: |
+          flutter pub get
+          flutter build linux --release
+
+      - name: Montar o Flatpak
+        run: |
+          flatpak-builder --user --force-clean --disable-rofiles-fuse \
+            --install-deps-from=flathub --repo=dist/repo dist/build \
+            flatpak/${APP_ID}.yml
+          flatpak build-bundle dist/repo "dist/${BUNDLE}" "${APP_ID}" master
+
+      - name: Guardar como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUNDLE }}
+          path: dist/${{ env.BUNDLE }}
+          if-no-files-found: error
+
+      - name: Publicar na release (só em tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ env.BUNDLE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    name: Release automática (só em push na main)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci, flatpak, apk]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/arquivos
+          merge-multiple: true
+      - name: Renomear os arquivos com a versão do build
+        run: |
+          mv dist/arquivos/ConectDroidCam.apk "dist/arquivos/ConectDroidCam-${GITHUB_RUN_NUMBER}.apk"
+          mv dist/arquivos/ConectDroidCam.flatpak "dist/arquivos/ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak"
+      - name: Criar a release com os commits desde a anterior
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-${GITHUB_RUN_NUMBER}"
+          ANTERIOR="$(git describe --tags --match 'build-*' --abbrev=0 HEAD 2>/dev/null || true)"
+          if [ -n "$ANTERIOR" ]; then
+            INTERVALO="${ANTERIOR}..HEAD"
+          else
+            INTERVALO="HEAD"
+          fi
+          {
+            echo "Build automático do commit \`${GITHUB_SHA:0:7}\`."
+            echo
+            echo "## Mudanças desde ${ANTERIOR:-o início}"
+            echo
+            git log --no-merges --pretty='- %s (%h)' "$INTERVALO" | head -200
+            echo
+            echo "## Arquivos"
+            echo
+            echo "- **ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak**: app do Linux. Instale com \`flatpak install --user ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak\`."
+            echo "- **ConectDroidCam-${GITHUB_RUN_NUMBER}.apk**: app do Android (assinado com a chave de debug por enquanto)."
+          } > notas.md
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "ConectDroidCam build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA:0:7})" \
+            --notes-file notas.md \
+            dist/arquivos/*
