@@ -550,7 +550,7 @@ void main() {
 
         expect(find.text('192.168.0.7:47821 · já usado antes'), findsOneWidget);
         expect(
-          find.text('Conectar sozinho aos celulares já usados'),
+          find.text('Conectar sozinho aos celulares pareados'),
           findsOneWidget,
         );
         expect(find.text('Procurar de novo'), findsOneWidget);

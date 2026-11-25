@@ -18,6 +18,10 @@ abstract interface class ReceiverPlatform {
 
   Future<void> disconnect();
 
+  Future<String?> startIdleFeed(String device, int width, int height);
+
+  Future<void> stopIdleFeed();
+
   Future<String?> confirmPairing(bool accept);
 
   Future<String?> startStream(int width, int height, int fps);
