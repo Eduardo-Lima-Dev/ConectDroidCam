@@ -1,0 +1,59 @@
+# Manifesto do Flatpak do ConectDroidCam.
+# Build local (ver scripts/flatpak/instalar-local.sh). Antes de rodar, gere o bundle de release:
+#   cd apps/conectdroidcam && flutter build linux --release
+app-id: dev.eduardolima.conectdroidcam
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: conectdroidcam
+finish-args:
+  # Rede: descoberta mDNS e conexão TCP com o celular.
+  - --share=network
+  # Interface gráfica.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Webcam virtual (/dev/videoN) e a leitura da lista de dispositivos.
+  - --device=all
+
+modules:
+  # ffmpeg mínimo: só o que o app usa (decodificar H.264, escrever em v4l2, gerar a prévia JPEG).
+  # O app chama o binário `ffmpeg` pelo PATH, e /app/bin está no PATH da sandbox.
+  - name: ffmpeg
+    buildsystem: simple
+    build-commands:
+      - >-
+        ./configure --prefix=/app --disable-everything --disable-doc --disable-debug
+        --disable-ffplay --disable-ffprobe --disable-network --disable-autodetect
+        --disable-x86asm --enable-ffmpeg --enable-avdevice --enable-avfilter
+        --enable-swscale --enable-outdev=v4l2 --enable-protocol=file,pipe
+        --enable-demuxer=h264 --enable-parser=h264,mjpeg --enable-decoder=h264,mjpeg
+        --enable-encoder=mjpeg,rawvideo --enable-muxer=image2pipe,null,rawvideo
+        --enable-filter=scale,transpose,pad,setsar,split,fps,null,format
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-9.1.tar.xz
+        sha256: 1a4d394ae63d190a526cd052eb4415c156b5c5e2df37efab41a7de0b8fde2433
+
+  - name: conectdroidcam
+    buildsystem: simple
+    build-commands:
+      # O bundle do Flutter fica junto do executável: os dados em data/ e a biblioteca
+      # libcdc_ffi.so em lib/ (RPATH $ORIGIN/lib) são encontrados a partir de /app/bin.
+      - mkdir -p /app/bin
+      - cp -r bundle/. /app/bin/
+      - install -Dm644 dev.eduardolima.conectdroidcam.desktop /app/share/applications/dev.eduardolima.conectdroidcam.desktop
+      - install -Dm644 dev.eduardolima.conectdroidcam.metainfo.xml /app/share/metainfo/dev.eduardolima.conectdroidcam.metainfo.xml
+      - install -Dm644 dev.eduardolima.conectdroidcam.png /app/share/icons/hicolor/512x512/apps/dev.eduardolima.conectdroidcam.png
+    sources:
+      - type: dir
+        path: ../apps/conectdroidcam/build/linux/x64/release/bundle
+        dest: bundle
+      - type: file
+        path: dev.eduardolima.conectdroidcam.desktop
+      - type: file
+        path: dev.eduardolima.conectdroidcam.metainfo.xml
+      - type: file
+        path: dev.eduardolima.conectdroidcam.png
