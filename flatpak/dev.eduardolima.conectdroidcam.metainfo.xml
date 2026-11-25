@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.eduardolima.conectdroidcam</id>
+  <launchable type="desktop-id">dev.eduardolima.conectdroidcam.desktop</launchable>
+  <name>ConectDroidCam</name>
+  <summary>Use a câmera do celular como webcam</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <developer id="dev.eduardolima">
+    <name>Eduardo Lima</name>
+  </developer>
+  <description>
+    <p>O ConectDroidCam transforma a câmera do celular em uma webcam do computador, pela rede Wi-Fi.
+    O celular e o computador se pareiam uma vez e a conexão é criptografada.</p>
+    <p>O computador escolhe a resolução e os quadros por segundo, inicia e para a transmissão e troca
+    entre a câmera frontal e a traseira. A imagem aparece como webcam virtual no OBS e em outros programas.</p>
+  </description>
+  <releases>
+    <release version="0.1.0" date="2026-11-25"/>
+  </releases>
+</component>
