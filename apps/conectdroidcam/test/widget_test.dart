@@ -645,7 +645,9 @@ void main() {
       );
       expect(
         virtualWebcamSetupCommand(
-          environment: const {'FLATPAK_ID': 'io.github.eduardo_lima_dev.ConectDroidCam'},
+          environment: const {
+            'FLATPAK_ID': 'io.github.eduardo_lima_dev.ConectDroidCam',
+          },
         ),
         'flatpak run --command=cat io.github.eduardo_lima_dev.ConectDroidCam '
         '/app/share/conectdroidcam/linux-webcam-virtual.sh | sudo bash',

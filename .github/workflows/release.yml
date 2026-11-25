@@ -1,9 +1,15 @@
 name: Build e release
 
 # Gera o pacote .flatpak do app Linux e o APK do Android a cada push na main (e a cada PR para a
-# main). Num push na main também roda o CI (testes) e, só depois de CI, APK e Flatpak passarem,
-# cria uma release automática (build-N) com os dois arquivos e as notas tiradas dos commits
-# desde a release anterior. Ao criar uma tag v*, o .flatpak vai para a release dessa tag.
+# main). Num push na main também roda o CI (testes) e, só depois de CI, APK e Flatpak passarem:
+#   - cria uma release automática (build-N) com os dois arquivos e as notas tiradas dos commits
+#     desde a release anterior; o N é também o versionCode do APK, que o atualizador do app compara;
+#   - publica no GitHub Pages o repositório Flatpak assinado, de onde o app instalado se atualiza.
+# Ao criar uma tag v*, o .flatpak vai para a release dessa tag.
+#
+# Segredos: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS e
+# ANDROID_KEY_PASSWORD (chave de release do Android; sem ela o APK sai com a chave de debug) e
+# FLATPAK_GPG_PRIVATE_KEY e FLATPAK_GPG_KEY_ID (assinatura do repositório Flatpak).
 on:
   push:
     branches: [main]
@@ -22,6 +28,8 @@ concurrency:
 env:
   APP_ID: io.github.eduardo_lima_dev.ConectDroidCam
   BUNDLE: ConectDroidCam.flatpak
+  # Endereço do repositório Flatpak no GitHub Pages.
+  PAGES_URL: https://eduardo-lima-dev.github.io/ConectDroidCam
 
 jobs:
   # Nos PRs o ci.yml roda sozinho; aqui ele só roda num push, para a release esperar os testes.
@@ -47,11 +55,29 @@ jobs:
           flutter-version: ${{ steps.versao.outputs.flutter }}
           channel: stable
           cache: true
+      - name: Chave de release do Android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "Sem a chave de release: o APK sai assinado com a chave de debug."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
       - name: APK de release
         working-directory: apps/conectdroidcam
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           flutter pub get
-          flutter build apk --release
+          # O número do build (versionCode) é o da execução: o mesmo N da release build-N.
+          flutter build apk --release --build-number=${{ github.run_number }}
+      - name: Apagar a chave do runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
       - name: Copiar com o nome do app
         run: cp apps/conectdroidcam/build/app/outputs/flutter-apk/app-release.apk dist-apk-ConectDroidCam.apk
       - name: Guardar como artefato
@@ -100,12 +126,55 @@ jobs:
           flutter pub get
           flutter build linux --release
 
+      - name: Chave de assinatura do repositório Flatpak
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+          GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ] || [ -z "$GPG_KEY_ID" ]; then
+            echo "Sem a chave GPG: o repositório sai sem assinatura e não é publicado."
+            exit 0
+          fi
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 700 -p "$GNUPGHOME"
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          {
+            echo "GNUPGHOME=$GNUPGHOME"
+            echo "GPG_ARGS=--gpg-sign=$GPG_KEY_ID --gpg-homedir=$GNUPGHOME"
+          } >> "$GITHUB_ENV"
+
       - name: Montar o Flatpak
         run: |
+          # O ramo "stable" é o que o repositório publica e o que os usuários acompanham.
           flatpak-builder --user --force-clean --disable-rofiles-fuse \
-            --install-deps-from=flathub --repo=dist/repo dist/build \
-            flatpak/${APP_ID}.yml
-          flatpak build-bundle dist/repo "dist/${BUNDLE}" "${APP_ID}" master
+            --install-deps-from=flathub --default-branch=stable $GPG_ARGS \
+            --repo=dist/repo dist/build flatpak/${APP_ID}.yml
+          flatpak build-update-repo $GPG_ARGS --prune --generate-static-deltas \
+            --title="ConectDroidCam" --default-branch=stable dist/repo
+          # O bundle já sabe de onde vêm as atualizações: quem o instala passa a recebê-las
+          # do repositório publicado, e o runtime vem do Flathub.
+          BUNDLE_ARGS=""
+          if [ -n "$GPG_ARGS" ]; then
+            BUNDLE_ARGS="--repo-url=${PAGES_URL}/repo/ --gpg-keys=flatpak/conectdroidcam-repo.gpg"
+          fi
+          flatpak build-bundle $BUNDLE_ARGS \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            dist/repo "dist/${BUNDLE}" "${APP_ID}" stable
+
+      - name: Preparar o site do repositório Flatpak
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.GPG_ARGS != ''
+        run: |
+          mkdir -p dist/pages
+          cp -r flatpak/pages/. dist/pages/
+          rm -rf dist/repo/tmp
+          cp -r dist/repo dist/pages/repo
+          du -sh dist/pages
+
+      - name: Enviar o site como artefato do Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.GPG_ARGS != ''
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/pages
 
       - name: Guardar como artefato
         uses: actions/upload-artifact@v4
@@ -163,11 +232,33 @@ jobs:
             echo
             echo "## Arquivos"
             echo
-            echo "- **ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak**: app do Linux. Instale com \`flatpak install --user ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak\`."
-            echo "- **ConectDroidCam-${GITHUB_RUN_NUMBER}.apk**: app do Android (assinado com a chave de debug por enquanto)."
+            echo "- **ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak**: app do Linux. Instale com \`flatpak install --user ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak\`; depois ele se atualiza pelo repositório abaixo."
+            echo "- **ConectDroidCam-${GITHUB_RUN_NUMBER}.apk**: app do Android. Depois de instalado, o próprio app avisa quando há versão nova."
+            echo
+            echo "## Linux com atualizações automáticas"
+            echo
+            echo "\`\`\`sh"
+            echo "flatpak remote-add --user --if-not-exists conectdroidcam ${PAGES_URL}/conectdroidcam.flatpakrepo"
+            echo "flatpak install --user conectdroidcam ${APP_ID}"
+            echo "\`\`\`"
           } > notas.md
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
             --title "ConectDroidCam build ${GITHUB_RUN_NUMBER} (${GITHUB_SHA:0:7})" \
             --notes-file notas.md \
             dist/arquivos/*
+
+  pages:
+    name: Publicar o repositório Flatpak (GitHub Pages)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ci, flatpak, apk]
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

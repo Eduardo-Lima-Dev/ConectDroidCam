@@ -2,6 +2,19 @@
 
 O app do Linux é empacotado como Flatpak, com o id `io.github.eduardo_lima_dev.ConectDroidCam`. O manifesto fica em [`flatpak/io.github.eduardo_lima_dev.ConectDroidCam.yml`](../flatpak/io.github.eduardo_lima_dev.ConectDroidCam.yml).
 
+## Instalar com atualizações automáticas
+
+O workflow publica um repositório Flatpak próprio, assinado, no GitHub Pages (`https://eduardo-lima-dev.github.io/ConectDroidCam/`). Cadastre-o uma vez e instale:
+
+```sh
+flatpak remote-add --user --if-not-exists conectdroidcam https://eduardo-lima-dev.github.io/ConectDroidCam/conectdroidcam.flatpakrepo
+flatpak install --user conectdroidcam io.github.eduardo_lima_dev.ConectDroidCam
+```
+
+Depois disso, cada release da `main` chega pelo `flatpak update` e pela loja do sistema (GNOME Software, Discover). O `.flatpak` anexado às releases também já aponta para esse repositório: quem o instala passa a receber as atualizações sem precisar do `remote-add`.
+
+O app publicado segue o ramo `stable`. Se você tinha o app instalado pelo `instalar-local.sh` ou pelo manifesto de testes do Flathub (ramo `master`), remova-o antes, para não ficar com dois: `flatpak uninstall --user io.github.eduardo_lima_dev.ConectDroidCam//master`.
+
 ## Instalar localmente (sem sudo)
 
 ```sh
@@ -32,10 +45,10 @@ Para o **Flathub**, onde tudo precisa ser compilado offline a partir do código-
 O workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) roda:
 
 - a cada PR para a `main`: gera o `ConectDroidCam.flatpak` e o APK como artefatos (o CI, com os testes e validação dos metadados Flatpak, roda pelo `ci.yml`);
-- a cada push na `main`: roda o CI, o APK e o Flatpak e, **só se os três passarem**, cria uma release automática `build-N` com os dois arquivos e as notas tiradas dos commits desde a release anterior;
+- a cada push na `main`: roda o CI, o APK e o Flatpak e, **só se os três passarem**, cria uma release automática `build-N` com os dois arquivos e as notas tiradas dos commits desde a release anterior, e publica o repositório Flatpak no GitHub Pages;
 - a cada tag `v*`: anexa o `.flatpak` à release dessa tag.
 
-O APK da release é assinado com a chave de debug enquanto não houver uma chave de release nos segredos do repositório.
+O APK é assinado com a chave de release e o seu `versionCode` é o mesmo `N` da tag `build-N`; o repositório Flatpak é assinado com a chave GPG. As duas chaves e o que fazer com elas estão em [atualizacoes.md](atualizacoes.md).
 
 ## Limitações conhecidas
 
