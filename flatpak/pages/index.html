@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ConectDroidCam: instalar no Linux</title>
+<style>
+  :root { color-scheme: light dark; --fundo: #f6f7f9; --texto: #1c1f24; --cartao: #fff; --borda: #d9dde3; --codigo: #eef0f3; }
+  @media (prefers-color-scheme: dark) { :root { --fundo: #15171a; --texto: #e6e8eb; --cartao: #1e2125; --borda: #33373d; --codigo: #262a2f; } }
+  body { margin: 0; background: var(--fundo); color: var(--texto); font: 16px/1.55 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  header { display: flex; align-items: center; gap: 16px; }
+  header img { width: 64px; height: 64px; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  section { background: var(--cartao); border: 1px solid var(--borda); border-radius: 12px; padding: 16px 20px; margin-top: 20px; }
+  h2 { margin-top: 0; font-size: 1.15rem; }
+  pre { background: var(--codigo); padding: 12px; border-radius: 8px; overflow-x: auto; }
+  code { font-family: ui-monospace, monospace; font-size: 0.92em; }
+  a { color: #2f80ed; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="icone.png" alt="">
+    <div>
+      <h1>ConectDroidCam</h1>
+      <div>Use a câmera do celular como webcam no Linux.</div>
+    </div>
+  </header>
+
+  <section>
+    <h2>Instalar com atualizações automáticas</h2>
+    <p>Cadastre o repositório uma vez e instale. Depois, as versões novas chegam pelo <code>flatpak update</code> e pela loja do sistema (GNOME Software, Discover).</p>
+    <pre><code>flatpak remote-add --user --if-not-exists conectdroidcam https://eduardo-lima-dev.github.io/ConectDroidCam/conectdroidcam.flatpakrepo
+flatpak install --user conectdroidcam io.github.eduardo_lima_dev.ConectDroidCam</code></pre>
+    <p>Ou abra o arquivo <a href="io.github.eduardo_lima_dev.ConectDroidCam.flatpakref">io.github.eduardo_lima_dev.ConectDroidCam.flatpakref</a> na loja do sistema.</p>
+  </section>
+
+  <section>
+    <h2>Webcam virtual</h2>
+    <p>A imagem aparece como webcam por meio do módulo <code>v4l2loopback</code> do Linux, que precisa ser instalado no sistema uma vez. O app mostra o comando quando ele faltar.</p>
+  </section>
+
+  <section>
+    <h2>Celular Android</h2>
+    <p>Baixe o APK da <a href="https://github.com/Eduardo-Lima-Dev/ConectDroidCam/releases">página de releases</a>. Depois de instalado, o próprio app avisa quando há versão nova.</p>
+  </section>
+</main>
+</body>
+</html>
