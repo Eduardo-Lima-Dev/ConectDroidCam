@@ -1,5 +1,3 @@
-/// Um arquivo de uma versão publicada nas releases do GitHub: o APK do Android ou o
-/// `.flatpak` do Linux.
 class ReleaseAsset {
   const ReleaseAsset({
     required this.build,
@@ -9,26 +7,18 @@ class ReleaseAsset {
     required this.pageUrl,
   });
 
-  /// Número do build. Vem da tag `build-N`; no Android é também o `versionCode`.
   final int build;
   final String tag;
   final String assetUrl;
 
-  /// Tamanho do arquivo em bytes, para conferir o download.
   final int size;
 
-  /// Página da release, com as notas.
   final String pageUrl;
 }
 
-/// Escolhe, entre as releases do GitHub (a resposta de `GET /repos/.../releases`), a mais
-/// nova que tenha um APK.
 ReleaseAsset? latestApk(List<Object?> releases) =>
     latestRelease(releases, suffix: '.apk');
 
-/// A release mais nova que tenha um arquivo terminado em [suffix]. Só valem as tags
-/// `build-N`, que o workflow cria a cada push na `main`; rascunhos e pré-lançamentos ficam de
-/// fora.
 ReleaseAsset? latestRelease(List<Object?> releases, {required String suffix}) {
   final tagRe = RegExp(r'^build-(\d+)$');
   ReleaseAsset? best;
@@ -62,16 +52,4 @@ ReleaseAsset? latestRelease(List<Object?> releases, {required String suffix}) {
   return best;
 }
 
-/// Resultado da instalação, informado pelo Android.
-enum InstallStatus {
-  /// O Android abriu a tela de confirmação.
-  pendingUser,
-  success,
-
-  /// A versão instalada tem outra assinatura: o Android recusa atualizar por cima.
-  conflict,
-
-  /// O usuário cancelou.
-  aborted,
-  failure,
-}
+enum InstallStatus { pendingUser, success, conflict, aborted, failure }

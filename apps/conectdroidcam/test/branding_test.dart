@@ -4,7 +4,6 @@ import 'package:conectdroidcam/shared/widgets/brand_logo.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Largura, altura e tipo de cor de um PNG, lidos do cabeçalho (IHDR).
 ({int width, int height, int colorType}) lerPng(Uint8List bytes) {
   const assinatura = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
   expect(bytes.sublist(0, 8), assinatura, reason: 'não é um PNG');
@@ -12,7 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
   return (
     width: dados.getUint32(16),
     height: dados.getUint32(20),
-    // 2 = RGB, 6 = RGBA (com transparência).
     colorType: bytes[25],
   );
 }

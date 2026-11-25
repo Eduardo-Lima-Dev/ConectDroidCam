@@ -1,5 +1,3 @@
-//! O computador manda ordens a um celular simulado que espera comandos. Pula sem ffmpeg.
-
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::net::{TcpListener, TcpStream};
@@ -21,7 +19,6 @@ fn ffmpeg_disponivel() -> bool {
         .is_ok_and(|s| s.success())
 }
 
-/// Espera, por até 15 s, um evento que satisfaça o teste, e devolve-o.
 fn esperar<T>(
     eventos: &Receiver<SessionEvent>,
     mut quer: impl FnMut(&SessionEvent) -> Option<T>,
@@ -65,7 +62,6 @@ fn computador_inicia_para_muda_fps_e_troca_de_camera() {
         })
     };
 
-    // Ao conectar, o celular se apresenta parado, com as resoluções que oferece.
     let (modos, parado) = esperar(&eventos, |e| match e {
         SessionEvent::Capabilities {
             modes, streaming, ..
@@ -80,7 +76,6 @@ fn computador_inicia_para_muda_fps_e_troca_de_camera() {
             .any(|m| m.width == 2560 && !m.available && m.reason.is_some())
     );
 
-    // Iniciar: chega o perfil pedido e depois vídeo de verdade.
     parar
         .send(&Message::StreamStart {
             width: 1280,
@@ -98,7 +93,6 @@ fn computador_inicia_para_muda_fps_e_troca_de_camera() {
         _ => None,
     });
 
-    // Trocar de câmera com a transmissão ligada.
     parar
         .send(&Message::CameraSwitch {
             facing: Some(Facing::Front),
@@ -116,7 +110,6 @@ fn computador_inicia_para_muda_fps_e_troca_de_camera() {
         "trocar de câmera não pode parar a transmissão"
     );
 
-    // Parar: o celular avisa que não transmite mais, mas a conexão continua.
     parar.send(&Message::StreamStop).unwrap();
     esperar(&eventos, |e| match e {
         SessionEvent::Capabilities {
@@ -125,7 +118,6 @@ fn computador_inicia_para_muda_fps_e_troca_de_camera() {
         _ => None,
     });
 
-    // Uma resolução indisponível é recusada com erro, sem derrubar a sessão.
     parar
         .send(&Message::StreamStart {
             width: 2560,
@@ -139,7 +131,6 @@ fn computador_inicia_para_muda_fps_e_troca_de_camera() {
     });
     assert_eq!(motivo.0, "CommandFailed");
 
-    // Iniciar de novo, agora em outro tamanho.
     parar
         .send(&Message::StreamStart {
             width: 1920,

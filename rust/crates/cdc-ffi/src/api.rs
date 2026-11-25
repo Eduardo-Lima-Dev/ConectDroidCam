@@ -1,6 +1,3 @@
-//! API que o Flutter chama. Os tipos são planos de propósito (sem enums com dados): assim a
-//! ponte não precisa do `freezed` nem do `build_runner` no lado do Dart.
-
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
@@ -15,21 +12,14 @@ use cdc_protocol::{Facing, Message};
 
 use crate::frb_generated::StreamSink;
 
-/// Um celular achado na rede.
 #[derive(Clone)]
 pub struct PhoneInfo {
     pub id: String,
     pub name: String,
     pub host: String,
-    /// `ip:porta` para conectar, ou `None` se o celular não anunciou um IPv4 utilizável.
     pub address: Option<String>,
     pub port: u16,
-    /// `true` quando o celular saiu da rede; nesse caso só `id` vale.
     pub lost: bool,
-    /// Se a busca não pôde começar ou parou, o motivo; nesse caso só este campo vale.
-    ///
-    /// Os erros viajam no fluxo e não como `Err`: a ponte entrega o `Err` de uma função com
-    /// fluxo num `Future` interno que ninguém escuta, e ele viraria uma exceção solta.
     pub error: Option<String>,
 }
 
@@ -63,8 +53,6 @@ impl From<Device> for PhoneInfo {
 
 static DISCOVERY: Mutex<Option<Discovery>> = Mutex::new(None);
 
-/// Começa a procurar celulares. Cada aparição e cada saída chegam em `updates`; se a busca
-/// não puder começar, chega um item com `error`.
 pub fn start_discovery(updates: StreamSink<PhoneInfo>) {
     stop_discovery();
     let for_events = updates.clone();
@@ -95,55 +83,35 @@ pub fn start_discovery(updates: StreamSink<PhoneInfo>) {
     }
 }
 
-/// Para a busca.
 pub fn stop_discovery() {
     if let Ok(mut guard) = DISCOVERY.lock() {
         *guard = None;
     }
 }
 
-/// Que tipo de coisa um [`ReceiverEvent`] descreve. Só os campos daquele tipo valem.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReceiverEventKind {
-    /// O celular se apresentou: `text` = nome, `text2` = sistema.
     Hello,
-    /// O que o celular entrega: `width`, `height`, `fps`, `bitrate_kbps`, `rotation`.
     Profile,
-    /// A saída de vídeo (re)iniciou: `canvas_width`, `canvas_height`, `rotation` e, em
-    /// `text`, o dispositivo em que escreve (vazio se nenhum).
     Output,
-    /// Estatísticas do último segundo: `stats_*` e `frames`.
     Stats,
-    /// Um quadro JPEG da prévia: `preview`.
     Preview,
-    /// O que o celular sabe fazer e seu estado: `modes`, `fps_options`, `streaming`,
-    /// `front` e `can_switch`.
     Capabilities,
-    /// O celular pediu pareamento: `text` = código de 6 dígitos que ele também mostra,
-    /// `text2` = impressão digital do celular.
     PairingCode,
-    /// Pareamento concluído: `text` = impressão digital do celular, para guardar.
     Paired,
-    /// Pareamento recusado ou não concluído: `text` = motivo.
     PairingDenied,
-    /// O celular reportou um erro: `text` = código, `text2` = mensagem.
     SenderError,
-    /// Aviso que não interrompe: `text`.
     Notice,
-    /// A sessão terminou normalmente.
     Ended,
-    /// A sessão terminou por erro: `text` = explicação.
     Failed,
 }
 
-/// Uma resolução oferecida pelo celular.
 #[derive(Debug, Clone)]
 pub struct PhoneMode {
     pub width: u32,
     pub height: u32,
     pub available: bool,
     pub max_fps: u32,
-    /// Por que não está disponível; vazio quando está.
     pub reason: String,
 }
 
@@ -162,13 +130,10 @@ pub struct ReceiverEvent {
     pub stats_kbps: f64,
     pub stats_delay_ms: f64,
     pub frames: u64,
-    /// Bytes de um quadro JPEG, só no evento `Preview`.
     pub preview: Vec<u8>,
-    /// Só em `Capabilities`.
     pub modes: Vec<PhoneMode>,
     pub fps_options: Vec<u32>,
     pub streaming: bool,
-    /// A câmera em uso é a frontal.
     pub front: bool,
     pub can_switch: bool,
 }
@@ -300,10 +265,8 @@ impl From<SessionEvent> for ReceiverEvent {
     }
 }
 
-/// Formato do quadro entregue à webcam virtual.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
-    /// Vertical se o celular estiver em pé ao conectar, horizontal se estiver deitado.
     Auto,
     Horizontal,
     Vertical,
@@ -319,7 +282,6 @@ impl From<OutputFormat> for Canvas {
     }
 }
 
-/// Tamanho do quadro entregue à webcam virtual. Não acompanha a resolução do celular.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputSize {
     Hd,
@@ -337,19 +299,14 @@ impl From<OutputSize> for CoreSize {
     }
 }
 
-/// Uma webcam virtual de tamanho fixo, para um tamanho e um formato.
 pub struct ShapeDevice {
     pub size: OutputSize,
-    /// `true` para vertical, `false` para horizontal.
     pub vertical: bool,
     pub path: String,
 }
 
 static SESSION: Mutex<Option<StopHandle>> = Mutex::new(None);
 
-/// Conecta a um celular e entrega o vídeo à webcam virtual `v4l2_device` (sem ela, só mede).
-/// Os eventos chegam em `events` até a sessão terminar, e o último é sempre `Ended` ou
-/// `Failed`: inclusive quando a conexão nem abre ou já há uma sessão.
 #[allow(clippy::too_many_arguments)]
 pub fn connect_phone(
     address: String,
@@ -438,8 +395,6 @@ pub fn connect_phone(
     });
 }
 
-/// Identidade (certificado) deste computador, criada na primeira vez e guardada em
-/// `$XDG_CONFIG_HOME/conectdroidcam/identidade` (ou `~/.config/...`).
 fn load_identity() -> Result<cdc_core::Identity, String> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
@@ -456,7 +411,6 @@ fn clear_session(stop: &StopHandle) {
     stop.stop();
 }
 
-/// Encerra a sessão em andamento, se houver.
 pub fn disconnect_phone() {
     if let Ok(guard) = SESSION.lock()
         && let Some(stop) = guard.as_ref()
@@ -465,7 +419,6 @@ pub fn disconnect_phone() {
     }
 }
 
-/// Envia um comando ao celular da sessão em andamento. Devolve o motivo se não foi possível.
 fn command(message: Message) -> Option<String> {
     let guard = SESSION.lock().ok()?;
     match guard.as_ref() {
@@ -474,7 +427,6 @@ fn command(message: Message) -> Option<String> {
     }
 }
 
-/// O usuário confirmou (ou recusou) o código de pareamento mostrado na tela.
 pub fn confirm_pairing(accept: bool) -> Option<String> {
     let guard = SESSION.lock().ok()?;
     match guard.as_ref() {
@@ -485,29 +437,24 @@ pub fn confirm_pairing(accept: bool) -> Option<String> {
     }
 }
 
-/// Pede ao celular que comece a transmitir neste tamanho e FPS.
 pub fn phone_start_stream(width: u32, height: u32, fps: u32) -> Option<String> {
     command(Message::StreamStart { width, height, fps })
 }
 
-/// Pede ao celular que pare de transmitir, mantendo a conexão.
 pub fn phone_stop_stream() -> Option<String> {
     command(Message::StreamStop)
 }
 
-/// Muda o FPS com a transmissão ligada.
 pub fn phone_set_fps(fps: u32) -> Option<String> {
     command(Message::FpsSet { fps })
 }
 
-/// Troca a câmera do celular: `Some(true)` frontal, `Some(false)` traseira, `None` alterna.
 pub fn phone_switch_camera(front: Option<bool>) -> Option<String> {
     command(Message::CameraSwitch {
         facing: front.map(|f| if f { Facing::Front } else { Facing::Back }),
     })
 }
 
-/// `true` se o `ffmpeg` está instalado: sem ele não há como escrever na webcam virtual.
 pub fn ffmpeg_available() -> bool {
     Command::new("ffmpeg")
         .arg("-version")
@@ -517,7 +464,6 @@ pub fn ffmpeg_available() -> bool {
         .is_ok_and(|s| s.success())
 }
 
-/// Nome deste computador, que o celular mostra.
 pub fn computer_name() -> String {
     std::fs::read_to_string("/proc/sys/kernel/hostname")
         .ok()

@@ -7,22 +7,17 @@ import '../data/update_sources.dart';
 import '../domain/update_models.dart';
 
 enum UpdatePhase {
-  /// Ainda não procurou, ou o atualizador não vale nesta plataforma.
   idle,
   checking,
   upToDate,
 
-  /// Há uma versão nova; nada foi baixado ainda.
   available,
   downloading,
 
-  /// O Android pede que o usuário permita instalar apps vindos do ConectDroidCam.
   needsPermission,
 
-  /// Baixado e pronto para instalar.
   ready,
 
-  /// A tela de confirmação do Android está aberta.
   installing,
   failed,
 }
@@ -40,10 +35,8 @@ class UpdateState {
   final ReleaseAsset? release;
   final int installedBuild;
 
-  /// Progresso do download, de 0 a 1.
   final double progress;
 
-  /// Explicação para o usuário quando algo não deu certo.
   final String? message;
 
   UpdateState copyWith({
@@ -61,7 +54,6 @@ class UpdateState {
   );
 }
 
-/// O atualizador só existe no Android: no Linux, quem atualiza é o Flatpak.
 final updaterEnabledProvider = Provider<bool>((ref) => Platform.isAndroid);
 
 final releaseSourceProvider = Provider<ReleaseSource>(
@@ -91,8 +83,6 @@ class UpdateController extends Notifier<UpdateState> {
 
   UpdaterPlatform get _platform => ref.read(updaterPlatformProvider);
 
-  /// Procura uma versão nova. Falhar aqui (sem internet, GitHub fora) não é um erro para o
-  /// usuário: o app só não mostra o aviso.
   Future<void> check() async {
     if (!ref.read(updaterEnabledProvider)) return;
     if (state.phase == UpdatePhase.checking ||
@@ -121,7 +111,6 @@ class UpdateController extends Notifier<UpdateState> {
     }
   }
 
-  /// Baixa a versão nova e, se o Android já permite, abre a instalação.
   Future<void> download() async {
     final release = state.release;
     if (release == null ||
@@ -136,7 +125,6 @@ class UpdateController extends Notifier<UpdateState> {
     );
     try {
       final dir = await _platform.downloadDir();
-      // Só um APK por vez na pasta: os de atualizações anteriores são apagados.
       for (final old in Directory(dir).listSync().whereType<File>()) {
         if (old.path.endsWith('.apk')) old.deleteSync();
       }
@@ -160,7 +148,6 @@ class UpdateController extends Notifier<UpdateState> {
     }
   }
 
-  /// Abre a instalação do APK já baixado. Sem a permissão, pede ao usuário que a dê.
   Future<void> install() async {
     final path = _apkPath;
     if (path == null) return;
@@ -180,8 +167,6 @@ class UpdateController extends Notifier<UpdateState> {
     }
   }
 
-  /// Liga o aviso de versão nova por notificação, mesmo com o app fechado. Uma falha aqui não
-  /// atrapalha nada: o aviso dentro do app continua funcionando.
   Future<void> enableBackgroundChecks() async {
     if (!ref.read(updaterEnabledProvider)) return;
     try {
@@ -189,7 +174,6 @@ class UpdateController extends Notifier<UpdateState> {
     } on Object catch (_) {}
   }
 
-  /// Leva às configurações do Android para permitir que o ConectDroidCam instale apps.
   Future<void> openInstallSettings() => _platform.openInstallSettings();
 
   void _onStatus((InstallStatus, String?) event) {
@@ -198,7 +182,6 @@ class UpdateController extends Notifier<UpdateState> {
       case InstallStatus.pendingUser:
         state = state.copyWith(phase: UpdatePhase.installing);
       case InstallStatus.success:
-        // Em geral o Android encerra o app ao atualizar; se não, some o aviso.
         state = state.copyWith(phase: UpdatePhase.upToDate);
       case InstallStatus.aborted:
         state = state.copyWith(

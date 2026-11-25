@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-# Prepara o diretório de submissão ao Flathub em `dist/flathub-pr/`, gerando as fontes
-# offline (Flutter SDK, pubspec-sources.json, cargo-sources.json), compilando dentro do
-# sandbox com `org.flatpak.Builder` e rodando o `flatpak-builder-lint`.
-#
-# Pré-requisitos:
-#   - Repositório público no GitHub com a tag já enviada (ex.: v0.1.0)
-#   - `flatpak` com `org.flatpak.Builder`, `org.gnome.Platform//51`, `org.gnome.Sdk//51`
-#     e `org.freedesktop.Sdk.Extension.rust-stable//26.08` instalados no `--user`
-#   - `python3`, `git` e acesso à rede (apenas durante a geração dos manifestos)
-#
-# Uso:
-#   scripts/flatpak/preparar-flathub.sh [--tag v0.1.0] [--commit <sha>] [--sem-build]
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-# Spike S9: como o vídeo em TCP se comporta sob atraso e perda de pacotes.
-#
-# Roda sem root: o script se reexecuta dentro de um namespace de usuário e de rede
-# (`unshare -Urn`), onde pode aplicar `tc netem` no loopback sem tocar na rede real.
-# O emissor simulado e o receptor de teste conversam por esse loopback degradado.
-#
-# O que mede: o atraso que a rede acrescenta aos frames (p50, p95 e máximo), o maior
-# intervalo entre frames e o FPS efetivo. NÃO testa a política de descarte do celular
-# (ela está no código Kotlin); aqui o emissor simulado escreve sem descartar, então o
-# resultado mostra o pior caso do TCP puro.
-#
-# Uso: scripts/spikes/s9-perda.sh [segundos por cenário, padrão 12]
 set -euo pipefail
 
 SEGUNDOS="${1:-12}"

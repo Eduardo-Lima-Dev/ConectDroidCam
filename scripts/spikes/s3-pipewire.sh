@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# Spike S3: microfone virtual no PipeWire.
-#
-# Cria um par de nós com `pw-loopback`: uma entrada (Audio/Sink), onde o app vai escrever o
-# áudio vindo do celular, e uma saída (Audio/Source), que aparece como microfone para o
-# OBS, o navegador e qualquer programa. Toca um tom de 1 kHz na entrada e grava a saída
-# com um cliente independente, para provar que o áudio atravessa o nó.
-#
-# Não precisa de root. O nó existe só enquanto o script roda e é removido no fim.
-#
-# NÃO prova: o áudio do celular (ainda não há captura de áudio no app), a sincronia com o
-# vídeo nem a presença do microfone no mixer do OBS, que precisa ser conferida à mão.
-#
-# Uso: scripts/spikes/s3-pipewire.sh
 set -euo pipefail
 
 for ferramenta in pw-loopback pw-cat pw-record pw-dump ffmpeg python3; do
@@ -75,7 +62,6 @@ def goertzel(xs, freq, taxa):
         s1, s2 = x + k * s1 - s2, s1
     return math.sqrt(s1 * s1 + s2 * s2 - k * s1 * s2) / len(xs)
 
-# Só a parte em que o tom toca de fato: a maior janela de 1 s com sinal.
 janela = taxa
 melhor, pico = None, 0.0
 for ini in range(0, max(1, len(amostras) - janela), janela // 4):

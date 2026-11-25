@@ -1,12 +1,5 @@
-//! Código de pareamento: 6 dígitos que os dois lados calculam e o usuário compara.
-
 use sha2::{Digest, Sha256};
 
-/// Código de 6 dígitos das duas impressões digitais e do `nonce` do computador.
-///
-/// Quem intermedia a conexão apresenta ao celular um certificado e ao computador outro, e
-/// por isso cada tela mostra um código diferente. A ordem dos argumentos é fixa (celular,
-/// depois computador) para os dois lados chegarem ao mesmo número.
 pub fn pairing_code(phone_fingerprint: &str, computer_fingerprint: &str, nonce: &str) -> String {
     let mut hash = Sha256::new();
     hash.update(b"conectdroidcam-pairing-v1\0");
@@ -19,9 +12,7 @@ pub fn pairing_code(phone_fingerprint: &str, computer_fingerprint: &str, nonce: 
     format!("{n:06}")
 }
 
-/// Um `nonce` novo, em hexadecimal (16 bytes aleatórios).
 pub fn new_nonce() -> Result<String, crate::SecError> {
-    // O `rcgen` já traz a fonte de números aleatórios do sistema, por meio do `ring`.
     use rustls::crypto::ring::default_provider;
     let mut bytes = [0u8; 16];
     default_provider()
@@ -54,7 +45,6 @@ mod tests {
 
     #[test]
     fn certificado_diferente_muda_o_codigo() {
-        // É o que acontece quando alguém se põe no meio: cada lado vê um certificado.
         assert_ne!(pairing_code("aa", "bb", "n"), pairing_code("aa", "cc", "n"));
         assert_ne!(pairing_code("aa", "bb", "n"), pairing_code("xx", "bb", "n"));
         assert_ne!(pairing_code("aa", "bb", "n"), pairing_code("aa", "bb", "m"));

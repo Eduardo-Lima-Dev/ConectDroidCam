@@ -16,17 +16,6 @@ import org.json.JSONObject
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
-/**
- * Liga a interface Flutter ao emissor nativo. Contrato:
- *
- * MethodChannel `cdc/sender`: hasCameraPermission, requestCameraPermission,
- * listModes, localAddresses, startPreview, stopPreview, startStreaming(width, height, fps),
- * setFps(fps), switchCamera(front), stopStreaming, confirmPairing(accept), listPaired, unpair(fingerprint).
- *
- * EventChannel `cdc/sender/events`: mapas com `event` = client | stats | rotation | discovery | error
- * | remote (o computador ligou, desligou ou mudou a transmissão) | camera (o computador trocou a câmera)
- * | pairing (um computador pede pareamento: `code`, `computer`) | pairingEnded (`paired`, `computer`, `reason`).
- */
 class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     MethodChannel.MethodCallHandler,
     EventChannel.StreamHandler,
@@ -40,7 +29,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     private var encoder: VideoEncoder? = null
     private var server: StreamServer? = null
 
-    /** A transmissão foi ligada por ordem do computador: ela acaba quando ele desconecta. */
     private var startedByRemote = false
     private val advertiser = NsdAdvertiser(activity)
     private val security = PhoneSecurity(activity)
@@ -49,10 +37,8 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     private var lastCounters: StreamServer.Counters? = null
     private var lastStatsAtMs = 0L
 
-    /** FPS máximo da resolução em uso; limita o que `setFps` aceita. */
     private var streamMaxFps = DEFAULT_FPS
 
-    /** Tamanho que o codificador usa agora; `null` sem transmissão. */
     private var streamSize: Size? = null
 
     init {
@@ -114,8 +100,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    // --- Permissão --------------------------------------------------------------------
-
     private fun requestCameraPermission(result: MethodChannel.Result) {
         if (hasCameraPermission()) return result.success(true)
         pendingPermission?.success(false)
@@ -130,8 +114,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         pendingPermission = null
     }
 
-    // --- Perfis e rede ------------------------------------------------------------------
-
     private fun cameraModes(cam: CameraController): List<Map<String, Any?>> =
         CodecSupport.modes(cam.encoderSizes()) { cam.maxFps(it) }
 
@@ -141,23 +123,15 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         result.success(mapOf("modes" to cameraModes(cam), "fpsOptions" to cam.fixedFpsOptions()))
     }
 
-    /** 0, 1, 2 ou 3 = Surface.ROTATION_0, 90, 180 ou 270. */
     @Suppress("DEPRECATION")
     private fun displayRotation(): Int = activity.windowManager.defaultDisplay.rotation
 
-    /**
-     * Graus, no sentido horário, que o quadro do codificador precisa girar para ficar em pé na
-     * posição atual do aparelho. O codificador entrega a imagem na orientação do sensor, que é
-     * sempre horizontal; com o celular em pé ela chega deitada. É a fórmula do Camera2: câmera
-     * traseira `sensor - tela`, frontal `sensor + tela`, que também espelha.
-     */
     private fun videoRotation(cam: CameraController): Int {
         val tela = displayRotation() * 90
         val graus = if (cam.isFrontFacing) cam.sensorOrientation + tela else cam.sensorOrientation - tela
         return (graus % 360 + 360) % 360
     }
 
-    /** A tela girou: o Flutter reorienta a prévia e o computador, o vídeo enviado. */
     fun onConfigurationChanged() {
         events?.success(mapOf("event" to "rotation", "displayRotation" to displayRotation()))
         val cam = camera ?: return
@@ -172,8 +146,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                     mapOf("interface" to net.name, "address" to (it.hostAddress ?: ""))
                 }
             }
-
-    // --- Prévia -------------------------------------------------------------------------
 
     private fun startPreview(result: MethodChannel.Result) {
         if (!hasCameraPermission()) return result.error("permission", "Sem permissão de câmera", null)
@@ -200,10 +172,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         "canSwitch" to p.canSwitch,
     )
 
-    /**
-     * Troca a câmera, com ou sem transmissão. Com ela ligada o codificador não para: o vídeo
-     * só fica parado enquanto a câmera nova abre, e a rotação enviada ao computador é refeita.
-     */
     private fun switchCamera(front: Boolean?, result: MethodChannel.Result) {
         doSwitchCamera(front) { outcome ->
             outcome.fold(
@@ -213,7 +181,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    /** Troca de câmera pedida pelo celular ou pelo computador; [done] roda na thread principal. */
     private fun doSwitchCamera(front: Boolean?, done: (Result<CameraController.Preview>) -> Unit) {
         val cam = camera ?: return done(Result.failure(IllegalStateException("Abra a prévia primeiro")))
         val wantFront = front ?: !cam.isFrontFacing
@@ -228,8 +195,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    // --- Transmissão --------------------------------------------------------------------
-
     private fun startStreaming(width: Int?, height: Int?, fps: Int?, result: MethodChannel.Result) {
         if (width == null || height == null || fps == null) {
             return result.error("argument", "Informe largura, altura e FPS", null)
@@ -242,10 +207,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    /**
-     * Liga o codificador e a câmera. Serve ao botão do celular e ao comando do computador
-     * ([remote]); [done] roda na thread principal.
-     */
     private fun doStartStreaming(
         width: Int,
         height: Int,
@@ -271,8 +232,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
 
         val bitrate = bitrateFor(width, height)
         val newEncoder = VideoEncoder(width, height, fps, bitrate, this)
-        // Atribuído antes de iniciar: o codificador entrega o SPS/PPS logo ao começar, e
-        // `onConfig` precisa encontrar o servidor, senão a configuração se perde.
         encoder = newEncoder
         try {
             currentServer.setStream(width, height, fps, bitrate, videoRotation(cam))
@@ -317,7 +276,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    /** Muda o FPS com a transmissão ligada, sem reiniciar câmera nem codificador. */
     private fun setFps(fps: Int?, result: MethodChannel.Result) {
         doSetFps(fps) { outcome ->
             outcome.fold(
@@ -340,12 +298,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    // --- Servidor e comandos do computador ------------------------------------------------
-
-    /**
-     * Liga o servidor e o anúncio na rede assim que a prévia abre, e não só ao transmitir:
-     * assim o computador acha o celular, conecta e decide o resto.
-     */
     private fun startListening() {
         if (server != null) return
         val newServer = StreamServer(PORT, APP_VERSION, security, this)
@@ -366,7 +318,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    /** Descreve ao computador o que a câmera em uso oferece e se há transmissão. */
     private fun publishCapabilities() {
         val cam = camera ?: return
         val currentServer = server ?: return
@@ -395,7 +346,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         currentServer.setCapabilities(frame)
     }
 
-    /** Avisa a interface do celular de uma mudança feita pelo computador. */
     private fun notifyRemoteState() {
         val size = streamSize
         events?.success(
@@ -483,8 +433,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    // --- Estatísticas -------------------------------------------------------------------
-
     private fun startStats() {
         lastCounters = server?.counters()
         lastStatsAtMs = System.currentTimeMillis()
@@ -514,8 +462,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         main.postDelayed(task, 1000)
     }
 
-    // --- Callbacks do servidor e do codificador -------------------------------------------
-
     override fun onClientConnected(peer: String) {
         main.post { events?.success(mapOf("event" to "client", "connected" to true, "peer" to peer)) }
     }
@@ -523,7 +469,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     override fun onClientDisconnected() {
         main.post {
             events?.success(mapOf("event" to "client", "connected" to false))
-            // Quem ligou a transmissão foi o computador e ele foi embora: ninguém assiste.
             if (startedByRemote && encoder != null) {
                 stopStreaming()
                 notifyRemoteState()
@@ -560,8 +505,6 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     override fun onError(error: Exception) {
         fatal("Erro do codificador: ${error.message}")
     }
-
-    // --- EventChannel -------------------------------------------------------------------
 
     override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
         events = sink

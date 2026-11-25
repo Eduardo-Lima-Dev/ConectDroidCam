@@ -8,10 +8,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
 
-/**
- * Protocolo v1 (ver docs/protocol-v1.md). Espelha o crate Rust `cdc-protocol`:
- * as mesmas regras de validação valem nos dois lados.
- */
 object Protocol {
     const val VERSION = 1
     const val HEADER_LEN = 14
@@ -42,7 +38,7 @@ object Protocol {
 
     fun write(out: OutputStream, frame: Frame) {
         validate(frame.type, frame.flags, frame.payload.size.toLong())
-        val header = ByteBuffer.allocate(HEADER_LEN) // big-endian por padrão
+        val header = ByteBuffer.allocate(HEADER_LEN)
         header.put(frame.type.toByte())
         header.put(frame.flags.toByte())
         header.putLong(frame.ptsUs)
@@ -52,7 +48,6 @@ object Protocol {
         out.flush()
     }
 
-    /** Lê um frame. Devolve `null` se a conexão fechou limpa antes do primeiro byte. */
     fun read(input: InputStream): Frame? {
         val raw = ByteArray(HEADER_LEN)
         var got = 0
@@ -69,7 +64,6 @@ object Protocol {
         val flags = buf.get().toInt() and 0xff
         val pts = buf.long
         val length = buf.int.toLong() and 0xffffffffL
-        // Valida antes de alocar: um tamanho hostil não pode causar alocação gigante.
         validate(type, flags, length)
         val payload = ByteArray(length.toInt())
         var read = 0
@@ -89,7 +83,6 @@ object Protocol {
         return Frame(TYPE_CONTROL, 0, 0, json.toString().toByteArray(Charsets.UTF_8))
     }
 
-    /** Interpreta um frame de controle; `null` se for inválido ou de outra versão. */
     fun parseControl(frame: Frame): JSONObject? {
         if (frame.type != TYPE_CONTROL) return null
         return try {

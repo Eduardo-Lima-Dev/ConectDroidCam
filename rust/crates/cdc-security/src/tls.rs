@@ -1,9 +1,3 @@
-//! TLS com a impressão digital do outro lado fixada.
-//!
-//! Não há autoridade certificadora: o que vale é a impressão digital (SHA-256) do
-//! certificado do outro lado. No pareamento ela ainda não é conhecida, e o usuário a confere
-//! pelo código de 6 dígitos; depois, só a registrada é aceita.
-
 use std::io;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
@@ -28,7 +22,6 @@ pub enum SecError {
     Identity(String),
     #[error("falha no TLS: {0}")]
     Tls(String),
-    /// O certificado apresentado não é o que foi registrado no pareamento.
     #[error("o certificado do outro lado mudou (esperado {expected}, recebido {got})")]
     FingerprintMismatch { expected: String, got: String },
     #[error(transparent)]
@@ -46,9 +39,6 @@ fn algorithms() -> WebPkiSupportedAlgorithms {
     ring::default_provider().signature_verification_algorithms
 }
 
-/// Aceita só o certificado de impressão digital `pinned`; sem ela (pareamento), aceita
-/// qualquer um e deixa a conferência para o código de 6 dígitos. As assinaturas do
-/// handshake são sempre verificadas: ter o certificado não basta, é preciso ter a chave.
 #[derive(Debug)]
 struct PinnedServer {
     pinned: Option<String>,
@@ -101,8 +91,6 @@ impl ServerCertVerifier for PinnedServer {
     }
 }
 
-/// Exige que o cliente apresente um certificado, sem julgá-lo: quem decide se aquela
-/// impressão digital é de um computador pareado é o celular, na camada acima.
 #[derive(Debug)]
 struct AnyClient;
 
@@ -147,14 +135,12 @@ fn tls_error(e: &rustls::Error) -> SecError {
     SecError::Tls(e.to_string())
 }
 
-/// Roda o handshake até o fim, com prazo.
 fn handshake(conn: &mut Connection, tcp: &mut TcpStream) -> io::Result<()> {
     tcp.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
     tcp.set_write_timeout(Some(HANDSHAKE_TIMEOUT))?;
     while conn.is_handshaking() {
         conn.complete_io(tcp)?;
     }
-    // Entrega o que sobrou do handshake (Finished do cliente em TLS 1.3).
     while conn.wants_write() {
         conn.complete_io(tcp)?;
     }
@@ -170,11 +156,6 @@ fn peer_fingerprint(conn: &Connection) -> Result<String, SecError> {
         .ok_or_else(|| SecError::Tls("o outro lado não apresentou certificado".into()))
 }
 
-/// Abre o TLS como **computador** (cliente) sobre uma conexão já aberta com o celular.
-///
-/// `pinned` é a impressão digital registrada do celular; `None` só no pareamento. O
-/// computador sempre apresenta o certificado de `identity`. Devolve um [`SecureLink`], cujo
-/// `stream` é a conexão em texto claro para o resto do programa usar.
 pub fn connect_secure(
     mut tcp: TcpStream,
     identity: &Identity,
@@ -211,9 +192,6 @@ pub fn connect_secure(
     SecureLink::start(conn, tcp, fp)
 }
 
-/// Abre o TLS como **celular** (servidor) sobre uma conexão aceita. Exige que o cliente
-/// apresente um certificado; a impressão digital dele vem em `peer_fingerprint`, para o
-/// chamador decidir se é de um computador pareado.
 pub fn accept_secure(mut tcp: TcpStream, identity: &Identity) -> Result<SecureLink, SecError> {
     let config = ServerConfig::builder_with_provider(provider())
         .with_safe_default_protocol_versions()

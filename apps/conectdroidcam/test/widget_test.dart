@@ -14,8 +14,6 @@ import 'features/sender/fake_sender_platform.dart';
 
 final androidOnly = TargetPlatformVariant.only(TargetPlatform.android);
 
-/// Abre o app numa tela alta, como a de um celular: o painel de controle é uma lista
-/// e só constrói o que está à vista, então numa tela baixa o FPS ficaria fora.
 Future<FakeSenderPlatform> pumpApp(
   WidgetTester tester, {
   Size size = const Size(1200, 3000),
@@ -24,7 +22,6 @@ Future<FakeSenderPlatform> pumpApp(
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = pixelRatio;
   addTearDown(tester.view.reset);
-  // A tela cheia chama o sistema para esconder as barras; nos testes não há sistema.
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
     SystemChannels.platform,
     (_) async => null,
@@ -55,13 +52,11 @@ void main() {
 
     expect(find.text('HD (1280×720)'), findsOneWidget);
     expect(find.text('Full HD (1920×1080)'), findsOneWidget);
-    // O 2K sempre aparece com a resolução, e o motivo quando indisponível.
     expect(find.text('2K (2560×1440)'), findsOneWidget);
     expect(
       find.text('sem codificador H.264 por hardware para 2560×1440'),
       findsOneWidget,
     );
-    // O rótulo do DropdownMenu é desenhado duas vezes (campo e rótulo flutuante).
     expect(find.text('Outras resoluções'), findsWidgets);
     expect(find.text('Quadros por segundo'), findsOneWidget);
     expect(find.text('15'), findsOneWidget);
@@ -115,7 +110,6 @@ void main() {
     expect(find.text('HD (1280×720)'), findsNothing);
     expect(find.text('2K (2560×1440)'), findsNothing);
     expect(find.text('Outras resoluções'), findsNothing);
-    // O FPS continua disponível para mudar com a transmissão ligada.
     expect(find.text('Quadros por segundo'), findsOneWidget);
   }, variant: androidOnly);
 
@@ -144,7 +138,6 @@ void main() {
         await tester.tap(find.byIcon(Icons.fullscreen));
         await tester.pumpAndSettle();
 
-        // Só os dois botões discretos: o painel de informações some.
         expect(find.byTooltip('Sair da tela cheia'), findsOneWidget);
         expect(find.byTooltip('Abrir o menu'), findsOneWidget);
         expect(find.text('ConectDroidCam'), findsNothing);
@@ -189,7 +182,6 @@ void main() {
       expect(find.byTooltip('Sair da tela cheia'), findsNothing);
       expect(find.text('ConectDroidCam'), findsOneWidget);
       expect(find.text('HD (1280×720)'), findsOneWidget);
-      // A escolha feita antes de entrar na tela cheia continua valendo.
       final tile = tester.widget<ListTile>(
         find.ancestor(
           of: find.text('Full HD (1920×1080)'),
@@ -297,7 +289,6 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('ConectDroidCam Pixel'), findsOneWidget);
-      // O endereço também aparece como dica do campo de texto; aqui interessa o da lista.
       expect(
         find.descendant(
           of: find.byType(ListTile),
@@ -310,7 +301,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(platform.lastAddress, '192.168.0.7:47821');
-      // Automático: o núcleo recebe a família e escolhe a webcam do tamanho e formato certos.
       expect(platform.lastDevice, isNull);
       expect(platform.lastShapeDevices, hasLength(6));
       expect(find.text('Desconectar'), findsOneWidget);
@@ -371,7 +361,6 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // No cabeçalho de status e no cartão do celular.
       expect(find.text('Conectado a 2201117SL'), findsNWidgets(2));
       expect(find.text('Celular conectado'), findsOneWidget);
       expect(find.text('Endereço: 192.168.0.9:47821'), findsOneWidget);
@@ -408,7 +397,6 @@ void main() {
       'a prévia vertical cabe em metade da janela, sem empurrar os controles',
       (tester) async {
         final platform = await pumpReceiver(tester);
-        // Depois do pumpReceiver, que define a janela padrão dos testes (1280×1600).
         tester.view.physicalSize = const Size(900, 1000);
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -431,7 +419,6 @@ void main() {
           ),
         );
         expect(box.height, lessThanOrEqualTo(500));
-        // Continua na proporção da saída, só menor.
         expect(box.width / box.height, closeTo(1080 / 1920, 0.01));
       },
       variant: linux,
@@ -454,7 +441,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Aguardando a imagem do celular…'), findsOneWidget);
 
-      // PNG mínimo de 1×1 pixel: o Image.memory decodifica qualquer imagem válida.
       platform.send(
         PreviewUpdate(
           Uint8List.fromList(const [
@@ -544,7 +530,6 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         final platform = FakeReceiverPlatform();
-        // Já usado e com a conexão automática desligada, para ele só aparecer na lista.
         final store = FakeSettingsStore(
           const ReceiverSettings(autoConnect: false, trustedPhones: {'x'}),
         );
@@ -640,7 +625,6 @@ void main() {
       expect(find.text('Automático'), findsOneWidget);
       expect(find.text('Horizontal'), findsOneWidget);
       expect(find.text('Vertical'), findsOneWidget);
-      // O aviso sobre o OBS fica à vista.
       expect(find.textContaining('ConectDroidCam FHD Vertical'), findsWidgets);
 
       await tester.tap(find.text('Vertical'));

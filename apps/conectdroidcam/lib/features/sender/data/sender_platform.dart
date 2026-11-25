@@ -4,8 +4,6 @@ import 'package:flutter/services.dart';
 
 import '../domain/sender_models.dart';
 
-/// Contrato com o emissor nativo. Existe para o controlador poder ser testado
-/// com uma versão falsa, sem câmera.
 abstract interface class SenderPlatform {
   Future<bool> hasCameraPermission();
   Future<bool> requestCameraPermission();
@@ -15,24 +13,18 @@ abstract interface class SenderPlatform {
   Future<void> stopPreview();
   Future<StreamInfo> startStreaming(VideoMode mode, int fps);
 
-  /// Muda o FPS com a transmissão ligada, sem reiniciar câmera nem codificador.
   Future<void> setFps(int fps);
 
-  /// Troca entre a câmera frontal e a traseira (sem `front`, alterna). Com a transmissão
-  /// ligada o vídeo só fica parado por cerca de um segundo.
   Future<PreviewInfo> switchCamera({bool? front});
   Future<void> stopStreaming();
 
-  /// O usuário comparou o código e [accept] diz se é o mesmo nas duas telas.
   Future<void> confirmPairing(bool accept);
   Future<List<PairedComputer>> listPaired();
 
-  /// Revoga o pareamento: o computador é desconectado e volta a precisar do código.
   Future<void> unpair(String fingerprint);
   Stream<SenderEvent> get events;
 }
 
-/// Falha vinda do código nativo, com mensagem já pronta para o usuário.
 class SenderException implements Exception {
   const SenderException(this.message);
 
@@ -42,7 +34,6 @@ class SenderException implements Exception {
   String toString() => message;
 }
 
-/// Implementação por MethodChannel e EventChannel (Android).
 class ChannelSenderPlatform implements SenderPlatform {
   ChannelSenderPlatform({MethodChannel? methods, EventChannel? eventChannel})
     : _methods = methods ?? const MethodChannel('cdc/sender'),

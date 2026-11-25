@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Copyright 2026 Eduardo Lima -->
 <component type="desktop-application">
   <id>io.github.eduardo_lima_dev.ConectDroidCam</id>
   <launchable type="desktop-id">io.github.eduardo_lima_dev.ConectDroidCam.desktop</launchable>

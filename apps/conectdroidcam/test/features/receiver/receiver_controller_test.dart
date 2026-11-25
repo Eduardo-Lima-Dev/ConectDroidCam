@@ -411,7 +411,6 @@ void main() {
           const HelloUpdate(deviceName: 'Pixel', platform: 'android'),
         );
         await tick();
-        // Só conectar não basta para ser lembrado: é preciso parear.
         expect(state().trustedPhones, isEmpty);
 
         platform.send(const PairedUpdate('abc123'));
@@ -494,12 +493,10 @@ void main() {
         await tick();
         expect(state().phase, ReceiverPhase.idle);
 
-        // O celular continua anunciando (eventos repetidos): não reconecta.
         platform.phoneFound(pixel);
         await tick();
         expect(platform.connects, 1);
 
-        // Sai da rede e volta: aí sim.
         platform.phoneLost(pixel.id);
         await tick();
         platform.phoneFound(pixel);
@@ -522,7 +519,7 @@ void main() {
 
         platform.send(const EndedUpdate());
         await tick();
-        platform.phoneFound(pixel); // ainda anunciado por um instante
+        platform.phoneFound(pixel);
         await tick();
 
         expect(platform.connects, 1);
@@ -565,7 +562,6 @@ void main() {
         await controller().start();
         final buscas = platform.discoveries;
 
-        // O relógio de teste: avança o tempo sem esperar de verdade.
         await Future<void>.delayed(
           ReceiverController.rediscoverEvery +
               const Duration(milliseconds: 200),
@@ -695,7 +691,6 @@ void main() {
       await tick();
       expect(platform.connects, 2);
 
-      // Se o celular parar e voltar, conecta sozinho de novo.
       platform.send(const EndedUpdate());
       await tick();
       platform.phoneLost(pixel.id);
@@ -758,7 +753,6 @@ void main() {
       expect(OutputSize.hd.label, 'HD (1280×720)');
       expect(OutputSize.fullHd.label, 'Full HD (1920×1080)');
       expect(OutputSize.qhd.label, '2K (2560×1440)');
-      // O identificador gravado no arquivo é o do enum, não o nome comercial.
       expect(OutputSize.hd.name, 'hd');
     });
   });

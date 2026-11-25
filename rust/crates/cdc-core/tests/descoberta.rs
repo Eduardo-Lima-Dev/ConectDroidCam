@@ -1,8 +1,3 @@
-//! Descoberta por mDNS de verdade. Precisa de multicast na rede local, que nem todo
-//! ambiente tem (contêineres de CI, por exemplo), então só roda com `--ignored`:
-//!
-//!     cargo test -p cdc-core --test descoberta -- --ignored
-
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -48,7 +43,6 @@ fn acha_um_celular_anunciado_e_percebe_quando_ele_sai() {
     assert_eq!(achado.port, 47821);
     assert!(achado.address().is_some(), "sem endereço IPv4: {achado:?}");
 
-    // Desanunciar avisa a rede, e a busca vê o serviço sair.
     let _ = anunciante.unregister(&fullname);
     let prazo = Instant::now() + Duration::from_secs(15);
     loop {

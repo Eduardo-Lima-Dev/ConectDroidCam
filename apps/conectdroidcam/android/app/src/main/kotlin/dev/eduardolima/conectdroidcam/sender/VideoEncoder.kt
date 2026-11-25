@@ -9,7 +9,6 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
 
-/** H.264 por hardware, com a câmera escrevendo direto na superfície de entrada. */
 class VideoEncoder(
     private val width: Int,
     private val height: Int,
@@ -18,10 +17,8 @@ class VideoEncoder(
     private val listener: Listener,
 ) {
     interface Listener {
-        /** SPS e PPS em Annex B. */
         fun onConfig(data: ByteArray)
 
-        /** Uma unidade de acesso em Annex B. */
         fun onFrame(data: ByteArray, ptsUs: Long, keyframe: Boolean)
 
         fun onError(error: Exception)
@@ -51,9 +48,8 @@ class VideoEncoder(
                     MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR
                 },
             )
-            // Repete SPS/PPS em cada IDR: quem entrar no meio da sessão consegue decodificar.
             setInteger("prepend-sps-pps-to-idr-frames", 1)
-            if (Build.VERSION.SDK_INT >= 23) setInteger(MediaFormat.KEY_PRIORITY, 0) // tempo real
+            if (Build.VERSION.SDK_INT >= 23) setInteger(MediaFormat.KEY_PRIORITY, 0)
             if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LATENCY, 1)
         }
 
@@ -105,7 +101,6 @@ class VideoEncoder(
         codec = mediaCodec
     }
 
-    /** Pede um IDR, usado quando frames foram descartados ou um cliente acabou de entrar. */
     fun requestKeyframe() {
         runCatching {
             codec?.setParameters(Bundle().apply { putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0) })

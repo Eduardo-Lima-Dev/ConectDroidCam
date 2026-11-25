@@ -1,8 +1,3 @@
-//! Uma sessão com um celular: conecta, lê o protocolo v1, mede o fluxo e entrega o vídeo à
-//! webcam virtual, girado para ficar em pé.
-//!
-//! Não usa TLS nem faz pareamento: esta versão do protocolo ainda é aberta.
-
 use std::io::{self, BufReader};
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -52,24 +47,15 @@ impl From<SecError> for SessionError {
 
 #[derive(Debug, Clone)]
 pub struct SessionOptions {
-    /// Duração máxima da sessão. `None` roda até o emissor fechar ou até `StopHandle::stop`.
     pub duration: Option<Duration>,
     pub sink: Sink,
     pub ffmpeg: String,
-    /// Formato do quadro de saída.
     pub canvas: Canvas,
-    /// Tamanho do quadro de saída. Não acompanha a resolução do celular.
     pub output_size: OutputSize,
-    /// Dispositivos por tamanho e formato. Se houver um para o par em uso, é nele que se
-    /// escreve; senão, em `sink.v4l2`.
     pub shape_devices: Vec<ShapeDevice>,
-    /// Nome deste computador, mostrado no celular.
     pub device_name: String,
-    /// Impressão digital do certificado deste computador (vazia sem TLS, como nos testes).
     pub own_fingerprint: String,
-    /// Impressão digital do certificado do celular, vista no handshake do TLS.
     pub phone_fingerprint: String,
-    /// Gera quadros JPEG pequenos para uma prévia na tela ([`SessionEvent::Preview`]).
     pub preview: bool,
 }
 
@@ -90,37 +76,28 @@ impl Default for SessionOptions {
     }
 }
 
-/// Um dispositivo de webcam virtual que sempre tem o mesmo tamanho: o do par (tamanho,
-/// formato). O OBS nunca fecha a webcam que abriu e ela não muda de tamanho com ele aberto;
-/// por isso há um dispositivo por tamanho e formato, e o app escolhe o certo.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShapeDevice {
     pub size: OutputSize,
-    /// `Horizontal` ou `Vertical` (nunca `Auto`).
     pub canvas: Canvas,
     pub path: String,
 }
 
-/// Estatísticas da última janela de um segundo.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stats {
     pub fps: f64,
     pub kbps: f64,
     pub frames: u64,
     pub keyframes: u64,
-    /// Maior atraso da rede na janela, além do melhor caso observado, em ms.
     pub delay_ms: f64,
 }
 
-/// O que acontece durante uma sessão.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SessionEvent {
-    /// O emissor se apresentou.
     Hello {
         device_name: String,
         platform: String,
     },
-    /// O que o emissor está realmente entregando.
     Profile {
         width: u32,
         height: u32,
@@ -128,51 +105,38 @@ pub enum SessionEvent {
         bitrate_kbps: u32,
         rotation: u32,
     },
-    /// A saída de vídeo foi (re)iniciada neste tamanho, com esta rotação aplicada.
     Output {
         canvas_width: u32,
         canvas_height: u32,
         rotation: u32,
-        /// Dispositivo de vídeo em que a imagem está sendo escrita, se houver.
         device: Option<String>,
     },
     Stats(Stats),
-    /// Um quadro JPEG da prévia (cerca de 10 por segundo, 480 px de largura).
     Preview(Vec<u8>),
-    /// O que o celular sabe fazer e em que estado está (transmitindo ou não, qual câmera).
-    /// Chega logo após a conexão e a cada mudança.
     Capabilities {
         modes: Vec<CapabilityMode>,
         fps_options: Vec<u32>,
-        /// A câmera em uso é a frontal.
         front: bool,
         can_switch: bool,
         streaming: bool,
     },
-    /// O celular não conhece este computador e o pareamento começou: este código precisa ser
-    /// igual ao que o celular mostra. Confirme com [`StopHandle::confirm_pairing`].
     PairingCode {
         code: String,
         phone_fingerprint: String,
     },
-    /// Os dois lados confirmaram: guarde a impressão digital do celular.
     Paired {
         phone_fingerprint: String,
     },
-    /// O pareamento não aconteceu (recusado, expirado ou celular não aceitou).
     PairingDenied {
         reason: String,
     },
-    /// O emissor reportou um erro.
     SenderError {
         code: String,
         message: String,
     },
-    /// Algo a mostrar ao usuário que não interrompe a sessão.
     Notice(String),
 }
 
-/// Permite encerrar uma sessão de outra thread.
 #[derive(Clone, Default)]
 pub struct StopHandle {
     inner: Arc<StopInner>,
@@ -181,10 +145,7 @@ pub struct StopHandle {
 #[derive(Default)]
 struct StopInner {
     stopped: AtomicBool,
-    /// Conexão com o celular. Todas as escritas passam por aqui, com o `Mutex` seguro, para
-    /// que um comando de outra thread nunca se misture no meio de um frame da sessão.
     stream: Mutex<Option<TcpStream>>,
-    /// Nonce do pareamento em andamento, para a confirmação do usuário.
     pairing_nonce: Mutex<Option<String>>,
 }
 
@@ -193,7 +154,6 @@ impl StopHandle {
         Self::default()
     }
 
-    /// Pede o fim da sessão e desbloqueia a leitura que esteja esperando o celular.
     pub fn stop(&self) {
         self.inner.stopped.store(true, Ordering::SeqCst);
         if let Ok(mut guard) = self.inner.stream.lock()
@@ -203,8 +163,6 @@ impl StopHandle {
         }
     }
 
-    /// Envia uma mensagem de controle ao celular, de qualquer thread. Falha se a sessão
-    /// ainda não começou ou já terminou.
     pub fn send(&self, message: &Message) -> Result<(), SessionError> {
         let frame = message.to_frame(0)?;
         let mut guard = self
@@ -219,7 +177,6 @@ impl StopHandle {
         Ok(())
     }
 
-    /// O usuário confirmou (ou recusou) o código de pareamento mostrado neste computador.
     pub fn confirm_pairing(&self, accept: bool) -> Result<(), SessionError> {
         let nonce = self
             .inner
@@ -249,7 +206,6 @@ impl StopHandle {
         if let Ok(mut guard) = self.inner.stream.lock() {
             *guard = Some(clone);
         }
-        // Se o fim foi pedido antes de a sessão começar, já fecha.
         if self.is_stopped() {
             self.stop();
         }
@@ -257,7 +213,6 @@ impl StopHandle {
     }
 }
 
-/// Abre a conexão com o celular, com prazo, preferindo IPv4.
 pub fn connect(address: &str, timeout: Duration) -> Result<TcpStream, SessionError> {
     let mut alvos: Vec<_> = address
         .to_socket_addrs()
@@ -277,9 +232,6 @@ pub fn connect(address: &str, timeout: Duration) -> Result<TcpStream, SessionErr
     })
 }
 
-/// Abre a conexão com o celular e o TLS por cima. `pinned` é a impressão digital registrada
-/// do celular; `None` só quando ele ainda não foi pareado. Devolve a conexão em texto claro
-/// (já decifrada) e a impressão digital que o celular apresentou.
 pub fn connect_secure_phone(
     address: &str,
     timeout: Duration,
@@ -307,9 +259,6 @@ struct Profile {
     rotation: u32,
 }
 
-/// Filtro e tamanho do quadro de saída para o perfil atual. `resolved` guarda o formato
-/// escolhido na primeira vez que há um perfil e o mantém pelo resto da sessão: o tamanho da
-/// webcam virtual não pode mudar no meio dela.
 fn desired_output(
     profile: Option<Profile>,
     canvas: Canvas,
@@ -329,8 +278,6 @@ fn desired_output(
     }
 }
 
-/// Roda uma sessão completa em uma conexão já aberta. Termina quando o tempo acaba, o
-/// celular fecha a conexão ou `stop` é chamado.
 pub fn run(
     stream: TcpStream,
     options: &SessionOptions,
@@ -353,18 +300,15 @@ pub fn run(
         app_version: env!("CARGO_PKG_VERSION").into(),
     })?;
     stop.send(&Message::ProfileQuery)?;
-    // O celular só começa a enviar vídeo útil num keyframe; pedir um logo acelera a prévia.
     stop.send(&Message::KeyframeRequest)?;
 
     let started = Instant::now();
-    // Código do pareamento em andamento, se houver.
     let mut pairing: Option<String> = None;
     let mut report = Report::default();
     let mut lag = LagTracker::default();
     let mut config: Option<Vec<u8>> = None;
     let mut profile: Option<Profile> = None;
     let mut feeding = false;
-    // Formato de saída em uso: resolvido uma vez e mantido durante a sessão.
     let mut canvas_in_use: Option<Canvas> = None;
     let mut last_video: Option<Instant> = None;
     let mut window_start = Instant::now();
@@ -378,8 +322,6 @@ pub fn run(
             let frame = match Frame::read_from(&mut reader) {
                 Ok(Some(frame)) => frame,
                 Ok(None) => return Ok(()),
-                // O celular pode cair ou o app fechar no meio da sessão, ou o fim ter sido
-                // pedido: o relatório do que já chegou continua valendo.
                 Err(ProtocolError::Io(e)) if is_disconnect(&e) || stop.is_stopped() => {
                     return Ok(());
                 }
@@ -408,8 +350,6 @@ pub fn run(
                             bitrate_kbps,
                             rotation,
                         });
-                        // Se a saída já roda com outro filtro (o celular girou), pede um
-                        // keyframe para reiniciá-la sem esperar o próximo natural.
                         let (filter, _) = desired_output(
                             profile,
                             options.canvas,
@@ -420,7 +360,6 @@ pub fn run(
                             stop.send(&Message::KeyframeRequest)?;
                         }
                     }
-                    // Celular parado: sem tamanho, não há o que mostrar.
                     Message::ProfileActual { .. } => {}
                     Message::Capabilities {
                         modes,
@@ -430,9 +369,6 @@ pub fn run(
                         streaming,
                     } => {
                         if !streaming && (feeding || profile.is_some()) {
-                            // A transmissão parou: fecha a saída de vídeo e espera a próxima.
-                            // O formato resolvido (`canvas_in_use`) continua, para a webcam
-                            // virtual não mudar de tamanho entre uma transmissão e outra.
                             output.finish();
                             feeding = false;
                             profile = None;
@@ -447,7 +383,6 @@ pub fn run(
                             streaming,
                         });
                     }
-                    // O celular não conhece este computador: começa o pareamento.
                     Message::Error {
                         code: ErrorCode::AuthFailed,
                         ..
@@ -476,7 +411,6 @@ pub fn run(
                             on_event(SessionEvent::Paired {
                                 phone_fingerprint: options.phone_fingerprint.clone(),
                             });
-                            // Agora o celular obedece: pede o que antes ele ignorou.
                             stop.send(&Message::ProfileQuery)?;
                             stop.send(&Message::KeyframeRequest)?;
                         } else {
@@ -518,9 +452,6 @@ pub fn run(
                     last_video = Some(now);
                     lag.record(now, frame.pts_us);
 
-                    // Só começa a entregar, e só reinicia a saída, num keyframe. O SPS/PPS
-                    // enviado à parte vai primeiro, se existir; sem ele, o próprio keyframe o
-                    // carrega, porque o codificador repete SPS/PPS em cada IDR.
                     if frame.is_keyframe() {
                         let (filter, dims) = desired_output(
                             profile,
@@ -530,8 +461,6 @@ pub fn run(
                         );
                         let mudou = output.has_process() && !output.is_running_with(&filter);
                         if !feeding || mudou {
-                            // Com dispositivos por tamanho e formato, escreve no que combina
-                            // com o par em uso; senão, no dispositivo único configurado.
                             let escolhido = canvas_in_use.and_then(|c| {
                                 options
                                     .shape_devices
@@ -553,8 +482,6 @@ pub fn run(
                             let dispositivo_em_uso =
                                 escolhido.or_else(|| options.sink.v4l2.clone());
                             output.set_device(dispositivo_em_uso.clone());
-                            // Alguém (o OBS) já pode ter a webcam virtual aberta em outro
-                            // tamanho; avisa antes de escrever, que é quando ainda dá para agir.
                             if let (Some(dispositivo), Some(tamanho), false) =
                                 (&dispositivo_em_uso, dims, mudou)
                                 && !dispositivo.starts_with(DISCARD)
@@ -613,7 +540,6 @@ pub fn run(
         }
     })();
 
-    // Em qualquer saída, avisa o celular e fecha a saída de vídeo.
     let _ = stop.send(&Message::SessionStop);
     output.finish();
     stop.stop();

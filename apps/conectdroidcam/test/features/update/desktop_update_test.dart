@@ -49,7 +49,6 @@ void main() {
     final c = container();
     await c.read(desktopUpdateProvider.notifier).check();
     expect(c.read(desktopUpdateProvider)?.build, 9);
-    // No computador, a release que interessa é a que tem o .flatpak.
     expect(source.suffixes, ['.flatpak']);
   });
 

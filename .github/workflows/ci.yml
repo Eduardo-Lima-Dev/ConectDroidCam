@@ -1,7 +1,5 @@
 name: CI
 
-# Roda em cada PR. Num push na main, quem o chama é o workflow de release (release.yml),
-# para a release só ser criada depois de todos os testes passarem.
 on:
   pull_request:
   workflow_call:

@@ -1,6 +1,3 @@
-//! Sobe o emissor simulado em uma porta livre, conecta como o desktop faria e confere
-//! os frames recebidos. Pula o teste se o ffmpeg não estiver instalado.
-
 use std::net::{TcpListener, TcpStream};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -78,7 +75,6 @@ fn desktop_recebe_hello_perfil_config_e_video() {
         videos += 1;
     }
 
-    // 2 s a 30 FPS = ~60 frames; tolera o início e o fim do ffmpeg.
     assert!((50..=65).contains(&videos), "frames de vídeo: {videos}");
     assert!(keyframes >= 2, "keyframes: {keyframes}");
     let resumo = servidor.join().unwrap().unwrap();

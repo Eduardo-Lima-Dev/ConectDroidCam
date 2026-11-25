@@ -1,5 +1,3 @@
-//! Certificado autoassinado de cada instalação e sua impressão digital.
-
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -10,7 +8,6 @@ use sha2::{Digest, Sha256};
 
 use crate::tls::SecError;
 
-/// Certificado e chave privada desta instalação.
 #[derive(Clone)]
 pub struct Identity {
     pub(crate) cert: Vec<u8>,
@@ -18,7 +15,6 @@ pub struct Identity {
 }
 
 impl Identity {
-    /// Cria uma identidade nova (certificado autoassinado, curva P-256).
     pub fn generate() -> Result<Self, SecError> {
         let key_pair = KeyPair::generate().map_err(|e| SecError::Identity(e.to_string()))?;
         let params = CertificateParams::new(vec!["conectdroidcam.local".to_string()])
@@ -32,8 +28,6 @@ impl Identity {
         })
     }
 
-    /// Lê a identidade guardada em `path`; se o arquivo não existe, cria uma e a grava
-    /// (só o dono lê). Um arquivo ilegível é um erro, nunca é sobrescrito em silêncio.
     pub fn load_or_create(path: &Path) -> Result<Self, SecError> {
         match fs::read_to_string(path) {
             Ok(text) => Self::decode(&text),
@@ -49,13 +43,10 @@ impl Identity {
         }
     }
 
-    /// SHA-256 do certificado, em hexadecimal minúsculo (64 caracteres).
     pub fn fingerprint(&self) -> String {
         fingerprint(&self.cert)
     }
 
-    /// Certificado de `cert` com a chave de `key`. Só para testes: simula quem copia um
-    /// certificado público sem ter a chave dele.
     #[doc(hidden)]
     pub fn mix(cert: &Identity, key: &Identity) -> Self {
         Self {
@@ -90,13 +81,10 @@ impl Identity {
     }
 }
 
-/// SHA-256 de um certificado em DER, em hexadecimal minúsculo.
 pub fn fingerprint(cert_der: &[u8]) -> String {
     hex(&Sha256::digest(cert_der))
 }
 
-/// Os primeiros 16 caracteres da impressão digital, em grupos de 4: serve para mostrar ao
-/// usuário e aos logs sem expor a impressão inteira.
 pub fn short_fingerprint(fingerprint: &str) -> String {
     fingerprint
         .chars()

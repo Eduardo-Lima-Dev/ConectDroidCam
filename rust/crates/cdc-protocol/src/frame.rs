@@ -1,40 +1,19 @@
-//! Frame binário do protocolo v1.
-//!
-//! Cabeçalho de 14 bytes, em big-endian:
-//!
-//! | Campo    | Tamanho | Conteúdo                                   |
-//! |----------|---------|--------------------------------------------|
-//! | `type`   | u8      | [`FrameType`]                              |
-//! | `flags`  | u8      | bit 0 = keyframe (só em vídeo)             |
-//! | `pts_us` | u64     | relógio de captura, em microssegundos      |
-//! | `length` | u32     | tamanho do payload                         |
-
 use std::io::{self, Read, Write};
 
 use crate::error::ProtocolError;
 
-/// Tamanho fixo do cabeçalho, em bytes.
 pub const HEADER_LEN: usize = 14;
-/// Limite de payload para vídeo, áudio e configurações (8 MiB).
 pub const MAX_PAYLOAD: u32 = 8 * 1024 * 1024;
-/// Limite de payload para mensagens de controle (64 KiB).
 pub const MAX_CONTROL_PAYLOAD: u32 = 64 * 1024;
-/// Marca um frame de vídeo que pode ser decodificado sem frames anteriores.
 pub const FLAG_KEYFRAME: u8 = 0b0000_0001;
 
-/// Tipo de conteúdo transportado por um frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum FrameType {
-    /// Mensagem de controle em JSON.
     Control = 0,
-    /// SPS e PPS do H.264, em Annex B.
     VideoConfig = 1,
-    /// Uma unidade de acesso H.264, em Annex B.
     Video = 2,
-    /// `AudioSpecificConfig` do AAC.
     AudioConfig = 3,
-    /// Um frame AAC bruto.
     Audio = 4,
 }
 
@@ -50,7 +29,6 @@ impl FrameType {
         }
     }
 
-    /// Maior payload aceito para este tipo de frame.
     pub fn max_payload(self) -> u32 {
         match self {
             Self::Control => MAX_CONTROL_PAYLOAD,
@@ -59,7 +37,6 @@ impl FrameType {
     }
 }
 
-/// Cabeçalho já validado.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameHeader {
     pub kind: FrameType,
@@ -69,7 +46,6 @@ pub struct FrameHeader {
 }
 
 impl FrameHeader {
-    /// Valida e interpreta 14 bytes de cabeçalho, antes de qualquer alocação.
     pub fn parse(buf: &[u8; HEADER_LEN]) -> Result<Self, ProtocolError> {
         let kind = FrameType::from_byte(buf[0])?;
         let flags = buf[1];
@@ -87,7 +63,6 @@ impl FrameHeader {
         Ok(header)
     }
 
-    /// Serializa o cabeçalho.
     pub fn to_bytes(&self) -> [u8; HEADER_LEN] {
         let mut out = [0u8; HEADER_LEN];
         out[0] = self.kind as u8;
@@ -120,7 +95,6 @@ impl FrameHeader {
     }
 }
 
-/// Frame completo: cabeçalho mais payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
     pub kind: FrameType,
@@ -139,7 +113,6 @@ impl Frame {
         }
     }
 
-    /// `true` se o frame tem o bit de keyframe.
     pub fn is_keyframe(&self) -> bool {
         self.flags & FLAG_KEYFRAME != 0
     }
@@ -160,7 +133,6 @@ impl Frame {
         Ok(header)
     }
 
-    /// Serializa o frame inteiro em memória.
     pub fn encode(&self) -> Result<Vec<u8>, ProtocolError> {
         let header = self.header()?;
         let mut out = Vec::with_capacity(HEADER_LEN + self.payload.len());
@@ -169,7 +141,6 @@ impl Frame {
         Ok(out)
     }
 
-    /// Escreve o frame em um fluxo, validando antes de enviar qualquer byte.
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), ProtocolError> {
         let header = self.header()?;
         writer.write_all(&header.to_bytes())?;
@@ -177,10 +148,6 @@ impl Frame {
         Ok(())
     }
 
-    /// Lê um frame de um fluxo.
-    ///
-    /// Devolve `Ok(None)` se a conexão fechou limpa, antes do primeiro byte do
-    /// cabeçalho. Fechar no meio de um frame é [`ProtocolError::Truncated`].
     pub fn read_from<R: Read>(reader: &mut R) -> Result<Option<Self>, ProtocolError> {
         let mut buf = [0u8; HEADER_LEN];
         let mut got = 0;
@@ -301,7 +268,6 @@ mod tests {
             pts_us: 0,
             len: MAX_PAYLOAD + 1,
         };
-        // Só o cabeçalho: se o leitor tentasse alocar e ler o payload, falharia por outro motivo.
         let err = Frame::read_from(&mut header.to_bytes().as_slice()).unwrap_err();
         assert!(matches!(err, ProtocolError::PayloadTooLarge { .. }));
     }

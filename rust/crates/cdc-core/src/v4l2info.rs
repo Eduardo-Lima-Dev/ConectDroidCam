@@ -1,14 +1,7 @@
-//! Informações sobre um dispositivo V4L2 que outros programas já podem estar usando.
-//!
-//! Servem a um aviso: a webcam virtual mantém o tamanho com que o OBS (ou outro leitor) a
-//! abriu, e uma imagem de outro tamanho chega embaralhada até ele reabri-la.
-
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-/// Largura e altura atuais do dispositivo, ou `None` se não der para saber (o `v4l2-ctl`
-/// não está instalado, ou o dispositivo não existe).
 pub fn current_size(device: &str) -> Option<(u32, u32)> {
     let saida = Command::new("v4l2-ctl")
         .args(["-d", device, "--get-fmt-video"])
@@ -18,15 +11,12 @@ pub fn current_size(device: &str) -> Option<(u32, u32)> {
     parse_size(&String::from_utf8_lossy(&saida.stdout))
 }
 
-/// Extrai "Width/Height      : 1920/1080" da saída do `v4l2-ctl --get-fmt-video`.
 pub(crate) fn parse_size(texto: &str) -> Option<(u32, u32)> {
     let linha = texto.lines().find(|l| l.contains("Width/Height"))?;
     let (w, h) = linha.split_once(':')?.1.trim().split_once('/')?;
     Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
 }
 
-/// Nomes dos programas que têm `path` aberto, fora o processo `own_pid` e os filhos dele
-/// (o nosso próprio `ffmpeg`). No Linux, lê `/proc`; em outros sistemas devolve vazio.
 pub fn other_openers(path: &str, own_pid: u32) -> Vec<String> {
     let Ok(procs) = fs::read_dir("/proc") else {
         return Vec::new();
@@ -63,15 +53,11 @@ pub fn other_openers(path: &str, own_pid: u32) -> Vec<String> {
 }
 
 fn parent_of(pid: u32) -> Option<u32> {
-    // /proc/<pid>/stat: "pid (nome com espaços) estado ppid ..."; o nome pode ter parênteses,
-    // então o ppid vem depois do ÚLTIMO ")".
     let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     let depois = stat.rsplit_once(')')?.1;
     depois.split_whitespace().nth(1)?.parse().ok()
 }
 
-/// O aviso para o usuário, se alguém já usa o dispositivo num tamanho diferente do que vamos
-/// escrever. `None` se não há conflito ou não dá para saber.
 pub fn size_conflict_notice(device: &str, new_size: (u32, u32), own_pid: u32) -> Option<String> {
     let atual = current_size(device)?;
     if atual == new_size {
@@ -116,16 +102,13 @@ mod tests {
         fs::write(&caminho, b"x").unwrap();
         let caminho_str = caminho.to_str().unwrap().to_string();
 
-        // Um processo de outro programa segurando o arquivo.
         let mut filho = Command::new("sh")
             .args(["-c", &format!("exec 3<'{caminho_str}'; exec sleep 5")])
             .spawn()
             .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(400));
 
-        // Visto de fora, o `sleep` aparece.
         assert!(other_openers(&caminho_str, 1).contains(&"sleep".to_string()));
-        // Se o dono for o pai de quem o abriu, é ignorado (é o nosso ffmpeg, por exemplo).
         assert!(!other_openers(&caminho_str, std::process::id()).contains(&"sleep".to_string()));
 
         let _ = filho.kill();

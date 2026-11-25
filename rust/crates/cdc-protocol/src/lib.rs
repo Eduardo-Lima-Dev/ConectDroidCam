@@ -1,8 +1,3 @@
-//! Protocolo v1 do ConectDroidCam: frames binários e mensagens de controle.
-//!
-//! Este crate não abre sockets nem conhece TLS. Ele só define o formato e o
-//! valida, para que emissor, receptor e testes compartilhem a mesma definição.
-
 mod error;
 mod frame;
 mod message;

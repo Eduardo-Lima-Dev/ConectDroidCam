@@ -1,9 +1,3 @@
-# Template de manifesto para o Flathub (processado por `TheAppgineer/flatpak-flutter` via
-# `scripts/flatpak/preparar-flathub.sh`).
-#
-# Diferente do manifesto local (`flatpak/io.github.eduardo_lima_dev.ConectDroidCam.yml`),
-# este compila o Rust (`cdc-ffi`), o Flutter e o `ffmpeg` inteiramente a partir do código-fonte
-# público, sem acesso à rede durante o build.
 app-id: io.github.eduardo_lima_dev.ConectDroidCam
 runtime: org.gnome.Platform
 runtime-version: '51'
@@ -12,17 +6,13 @@ sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
 command: conectdroidcam
 finish-args:
-  # Rede: descoberta mDNS e conexão TCP criptografada com o celular.
   - --share=network
-  # Interface gráfica.
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  # Webcam virtual (/dev/videoN) e leitura de /sys/class/video4linux.
   - --device=all
 
 modules:
-  # ffmpeg mínimo (LGPL): só decodifica H.264/MJPEG, escreve em v4l2 e gera a prévia JPEG.
   - name: ffmpeg
     buildsystem: simple
     build-commands:

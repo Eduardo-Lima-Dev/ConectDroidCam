@@ -1,24 +1,16 @@
-# Manifesto do Flatpak do ConectDroidCam.
-# Build local (ver scripts/flatpak/instalar-local.sh). Antes de rodar, gere o bundle de release:
-#   cd apps/conectdroidcam && flutter build linux --release
 app-id: io.github.eduardo_lima_dev.ConectDroidCam
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
 command: conectdroidcam
 finish-args:
-  # Rede: descoberta mDNS e conexão TCP com o celular.
   - --share=network
-  # Interface gráfica.
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  # Webcam virtual (/dev/videoN) e a leitura da lista de dispositivos.
   - --device=all
 
 modules:
-  # ffmpeg mínimo: só o que o app usa (decodificar H.264, escrever em v4l2, gerar a prévia JPEG).
-  # O app chama o binário `ffmpeg` pelo PATH, e /app/bin está no PATH da sandbox.
   - name: ffmpeg
     buildsystem: simple
     build-commands:
@@ -40,8 +32,6 @@ modules:
   - name: conectdroidcam
     buildsystem: simple
     build-commands:
-      # O bundle do Flutter fica junto do executável: os dados em data/ e a biblioteca
-      # libcdc_ffi.so em lib/ (RPATH $ORIGIN/lib) são encontrados a partir de /app/bin.
       - mkdir -p /app/bin
       - cp -r bundle/. /app/bin/
       - install -Dm644 io.github.eduardo_lima_dev.ConectDroidCam.desktop /app/share/applications/io.github.eduardo_lima_dev.ConectDroidCam.desktop

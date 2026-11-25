@@ -22,13 +22,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
-/**
- * Procura, em segundo plano, uma versão nova nas releases do GitHub e avisa por notificação,
- * mesmo com o app fechado. Tocar na notificação abre o app, onde fica o botão de atualizar.
- *
- * Avisa uma vez por versão: o último build avisado fica guardado. Sem internet, ou com o
- * GitHub fora, não faz nada e tenta de novo na próxima rodada.
- */
 class UpdateCheckWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
         val latest = runCatching { latestApkBuild() }.getOrNull() ?: return Result.success()
@@ -41,7 +34,6 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : Worker(con
         return Result.success()
     }
 
-    /** Maior `build-N` publicado que tenha APK; o mesmo critério do app (latestApk). */
     private fun latestApkBuild(): Long? {
         val conn = URL(RELEASES_URL).openConnection() as HttpURLConnection
         conn.connectTimeout = 15_000
@@ -69,7 +61,6 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : Worker(con
         }
     }
 
-    /** Devolve se a notificação foi mostrada (sem a permissão, o Android a bloqueia). */
     private fun notify(build: Long): Boolean {
         val ctx = applicationContext
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -124,7 +115,6 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : Worker(con
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pkg.longVersionCode else pkg.versionCode.toLong()
         }
 
-        /** Agenda a verificação a cada 6 horas, só com internet. Agendar de novo não duplica. */
         fun schedule(ctx: Context) {
             val request = PeriodicWorkRequest.Builder(UpdateCheckWorker::class.java, 6, TimeUnit.HOURS)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())

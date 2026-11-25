@@ -49,7 +49,6 @@ void main() {
   });
 
   test('uma textura 9:16 girada fica 16:9 na tela', () {
-    // Como o RotatedBox troca largura e altura, o resultado em paisagem é o inverso.
     final info = preview(sensor: 90, rotation: 1);
     expect(info.quarterTurns.isOdd, isTrue);
     expect(1 / info.textureAspectRatio, closeTo(16 / 9, 1e-9));

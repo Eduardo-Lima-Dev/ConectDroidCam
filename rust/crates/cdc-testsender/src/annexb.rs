@@ -1,7 +1,3 @@
-//! Utilitários para H.264 em Annex B.
-
-/// Maior quantidade de bytes acumulada sem achar dois delimitadores; acima disso o
-/// buffer é descartado, para uma entrada sem delimitadores não crescer sem fim.
 const MAX_BUFFER: usize = 16 * 1024 * 1024;
 
 const NAL_IDR: u8 = 5;
@@ -9,7 +5,6 @@ const NAL_SPS: u8 = 7;
 const NAL_PPS: u8 = 8;
 const NAL_AUD: u8 = 9;
 
-/// Posições de cada start code `00 00 01`, com o tipo da NAL que vem depois.
 fn start_codes(data: &[u8]) -> Vec<(usize, u8)> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -24,7 +19,6 @@ fn start_codes(data: &[u8]) -> Vec<(usize, u8)> {
     out
 }
 
-/// Início real da NAL: inclui o zero extra de um start code de 4 bytes.
 fn nal_start(data: &[u8], code_pos: usize) -> usize {
     if code_pos > 0 && data[code_pos - 1] == 0 {
         code_pos - 1
@@ -33,9 +27,6 @@ fn nal_start(data: &[u8], code_pos: usize) -> usize {
     }
 }
 
-/// Divide um fluxo Annex B em unidades de acesso, usando delimitadores AUD (NAL 9).
-///
-/// O ffmpeg precisa gerar o fluxo com `-bsf:v h264_metadata=aud=insert`.
 #[derive(Default)]
 pub struct AccessUnitSplitter {
     buf: Vec<u8>,
@@ -46,10 +37,6 @@ impl AccessUnitSplitter {
         Self::default()
     }
 
-    /// Acrescenta bytes e devolve as unidades de acesso que já terminaram.
-    ///
-    /// A última unidade só é entregue quando o próximo AUD chega, porque até lá
-    /// ainda pode receber mais NALs.
     pub fn push(&mut self, data: &[u8]) -> Vec<Vec<u8>> {
         self.buf.extend_from_slice(data);
         let starts: Vec<usize> = start_codes(&self.buf)
@@ -72,12 +59,10 @@ impl AccessUnitSplitter {
     }
 }
 
-/// `true` se a unidade de acesso contém um frame IDR.
 pub fn is_keyframe(unit: &[u8]) -> bool {
     start_codes(unit).iter().any(|&(_, kind)| kind == NAL_IDR)
 }
 
-/// SPS e PPS da unidade, concatenados com seus start codes. `None` se faltar algum.
 pub fn extract_config(unit: &[u8]) -> Option<Vec<u8>> {
     let codes = start_codes(unit);
     let mut config = Vec::new();
@@ -129,7 +114,6 @@ mod tests {
         let mut divisor = AccessUnitSplitter::new();
         let prontas = divisor.push(&fluxo);
         assert_eq!(prontas, vec![a, b]);
-        // `c` só sai quando o próximo AUD chegar.
         let prontas = divisor.push(&AUD);
         assert_eq!(prontas, vec![c]);
     }

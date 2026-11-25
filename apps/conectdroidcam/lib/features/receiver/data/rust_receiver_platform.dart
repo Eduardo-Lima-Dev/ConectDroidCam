@@ -9,10 +9,7 @@ import '../../../src/rust/frb_generated.dart';
 import '../domain/receiver_models.dart';
 import 'receiver_platform.dart';
 
-/// Implementação real, sobre o núcleo em Rust (`rust/crates/cdc-ffi`).
 class RustReceiverPlatform implements ReceiverPlatform {
-  /// [libraryPath] só é preciso fora do app empacotado (nos testes): no app, o RPATH
-  /// (`$ORIGIN/lib`) acha a biblioteca ao lado do executável.
   RustReceiverPlatform({this.libraryPath});
 
   final String? libraryPath;
@@ -27,14 +24,12 @@ class RustReceiverPlatform implements ReceiverPlatform {
   @override
   Stream<PhoneChange> discover() {
     return api.startDiscovery().map((info) {
-      // Os erros da ponte viajam no fluxo; aqui viram erro de fluxo de verdade.
       if (info.error case final erro?) throw StateError(erro);
       if (info.lost) return PhoneChange.lost(info.id);
       return PhoneChange.found(
         Phone(
           id: info.id,
           name: info.name,
-          // O núcleo só informa celulares que têm um endereço IPv4 para conectar.
           address: info.address ?? '${info.host}:${info.port}',
         ),
       );
@@ -83,7 +78,6 @@ class RustReceiverPlatform implements ReceiverPlatform {
           pinnedFingerprint: pinnedFingerprint,
         )
         .map(_toUpdate)
-        // Falha ao abrir a conexão chega como erro do fluxo, não como evento.
         .transform(
           StreamTransformer.fromHandlers(
             handleError: (error, stack, sink) {
@@ -166,7 +160,6 @@ class RustReceiverPlatform implements ReceiverPlatform {
 
   String _explain(Object error) {
     final text = error.toString();
-    // A ponte embrulha a mensagem do Rust numa exceção genérica.
     return text
         .replaceFirst(RegExp(r'^(AnyhowException|PanicException)\(?'), '')
         .replaceAll(RegExp(r'\)$'), '')
@@ -215,7 +208,6 @@ class RustReceiverPlatform implements ReceiverPlatform {
       devices.add(VideoDevice(path: '/dev/$id', name: name));
     }
     devices.sort((a, b) {
-      // O do ConectDroidCam primeiro; depois por número.
       if (a.isConectDroidCam != b.isConectDroidCam) {
         return a.isConectDroidCam ? -1 : 1;
       }

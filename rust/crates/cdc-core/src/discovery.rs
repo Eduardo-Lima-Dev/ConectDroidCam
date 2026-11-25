@@ -1,12 +1,9 @@
-//! Descoberta dos celulares na rede local por mDNS (`_conectdroidcam._tcp`).
-
 use std::net::Ipv4Addr;
 use std::thread;
 
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use thiserror::Error;
 
-/// Tipo de serviço que o celular anuncia.
 pub const SERVICE_TYPE: &str = "_conectdroidcam._tcp.local.";
 
 #[derive(Debug, Error)]
@@ -15,12 +12,9 @@ pub enum DiscoveryError {
     Daemon(String),
 }
 
-/// Um celular encontrado na rede.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Device {
-    /// Identificador estável do serviço (o nome completo do mDNS).
     pub id: String,
-    /// Nome para mostrar ao usuário.
     pub name: String,
     pub host: String,
     pub addresses: Vec<Ipv4Addr>,
@@ -28,7 +22,6 @@ pub struct Device {
 }
 
 impl Device {
-    /// Endereço `ip:porta` para conectar, ou `None` se o celular não anunciou IPv4.
     pub fn address(&self) -> Option<String> {
         self.addresses
             .first()
@@ -38,19 +31,15 @@ impl Device {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeviceEvent {
-    /// Apareceu, ou mudou de endereço.
     Found(Device),
-    /// Saiu da rede.
     Lost { id: String },
 }
 
-/// Mantém a busca ativa enquanto existir. Largar o valor encerra a busca.
 pub struct Discovery {
     daemon: ServiceDaemon,
 }
 
 impl Discovery {
-    /// Começa a procurar. `on_event` roda numa thread própria.
     pub fn start(
         mut on_event: impl FnMut(DeviceEvent) + Send + 'static,
     ) -> Result<Self, DiscoveryError> {
@@ -65,12 +54,9 @@ impl Discovery {
                         let mut addresses: Vec<Ipv4Addr> = info
                             .get_addresses_v4()
                             .into_iter()
-                            // 169.254.x.x é endereço automático de enlace, que não roteia.
                             .filter(|ip| !ip.is_link_local())
                             .collect();
                         addresses.sort();
-                        // O mDNS pode resolver o serviço antes de resolver o endereço; sem IPv4
-                        // não há como conectar, e o evento completo chega logo depois.
                         if addresses.is_empty() {
                             continue;
                         }
@@ -102,7 +88,6 @@ impl Drop for Discovery {
     }
 }
 
-/// "Pixel 7._conectdroidcam._tcp.local." vira "Pixel 7".
 pub fn instance_name(fullname: &str) -> String {
     fullname
         .strip_suffix(SERVICE_TYPE)

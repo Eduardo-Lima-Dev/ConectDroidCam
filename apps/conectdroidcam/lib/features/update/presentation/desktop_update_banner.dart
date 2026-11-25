@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/desktop_update_controller.dart';
 
-/// Aviso de versão nova no computador, com o comando de atualizar. Não aparece se não há.
 class DesktopUpdateBanner extends ConsumerWidget {
   const DesktopUpdateBanner({super.key});
 

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/widgets/brand_logo.dart';
 
-/// Tela provisória do computador (e do iPhone, até o emissor iOS existir).
 class PlaceholderPage extends StatelessWidget {
   const PlaceholderPage({
     super.key,

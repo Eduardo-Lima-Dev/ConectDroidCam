@@ -15,26 +15,13 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 import javax.security.auth.x500.X500Principal
 
-/**
- * Identidade do celular (certificado P-256 autoassinado, com a chave guardada no Keystore do
- * Android) e a lista de computadores pareados.
- *
- * Não há autoridade certificadora: cada lado guarda a impressão digital (SHA-256) do
- * certificado do outro. O computador que o celular ainda não conhece só pode pedir pareamento,
- * que o usuário confirma comparando um código de 6 dígitos nas duas telas.
- */
 class PhoneSecurity(context: Context) {
     val store = PairingStore(context)
 
     private val certificate: X509Certificate = loadOrCreateCertificate()
 
-    /** SHA-256 do certificado, em hexadecimal minúsculo: igual ao que o computador calcula. */
     val ownFingerprint: String = fingerprint(certificate.encoded)
 
-    /**
-     * TLS com o certificado do Keystore. Exige certificado do cliente, mas não o julga aqui:
-     * quem decide se aquela impressão digital é de um computador pareado é o [StreamServer].
-     */
     val sslContext: SSLContext = SSLContext.getInstance("TLS").also { ctx ->
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
         val factory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
@@ -44,7 +31,6 @@ class PhoneSecurity(context: Context) {
 
     private val failures = ArrayDeque<Long>()
 
-    /** Tentativas de pareamento que não deram certo nos últimos [LOCK_WINDOW_MS]. */
     @Synchronized
     private fun recentFailures(): Int {
         val limit = System.currentTimeMillis() - LOCK_WINDOW_MS
@@ -57,7 +43,6 @@ class PhoneSecurity(context: Context) {
         failures.addLast(System.currentTimeMillis())
     }
 
-    /** Depois de [MAX_FAILURES] pareamentos que falharam em pouco tempo, para de aceitar pedidos. */
     fun pairingLocked(): Boolean = recentFailures() >= MAX_FAILURES
 
     private fun loadOrCreateCertificate(): X509Certificate {
@@ -106,10 +91,6 @@ class PhoneSecurity(context: Context) {
         fun fingerprint(der: ByteArray): String =
             MessageDigest.getInstance("SHA-256").digest(der).joinToString("") { "%02x".format(it) }
 
-        /**
-         * Código de pareamento de 6 dígitos. Tem que dar o mesmo que `pairing_code` do crate
-         * `cdc-security`: o hash cobre o prefixo, depois cada campo com o tamanho em 4 bytes.
-         */
         fun pairingCode(phoneFingerprint: String, computerFingerprint: String, nonce: String): String {
             val hash = MessageDigest.getInstance("SHA-256")
             hash.update("conectdroidcam-pairing-v1\u0000".toByteArray(Charsets.UTF_8))
@@ -133,7 +114,6 @@ class PhoneSecurity(context: Context) {
     }
 }
 
-/** Computadores pareados, guardados no armazenamento privado do app. */
 class PairingStore(context: Context) {
     data class Computer(val fingerprint: String, val name: String, val since: Long)
 

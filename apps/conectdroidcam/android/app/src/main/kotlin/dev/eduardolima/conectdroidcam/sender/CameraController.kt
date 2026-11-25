@@ -16,13 +16,6 @@ import android.util.Size
 import android.view.Surface
 import io.flutter.view.TextureRegistry
 
-/**
- * Camera2 com duas saídas: a prévia (textura do Flutter, em resolução baixa) e,
- * durante a transmissão, a superfície do codificador (na resolução escolhida).
- *
- * Callbacks chegam na thread da câmera; quem chama é responsável por voltar à
- * thread principal quando precisar.
- */
 class CameraController(
     context: Context,
     private val textures: TextureRegistry,
@@ -34,18 +27,15 @@ class CameraController(
         val height: Int,
         val sensorOrientation: Int,
         val isFront: Boolean,
-        /** O aparelho tem câmera frontal e traseira, então dá para trocar. */
         val canSwitch: Boolean,
     )
 
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
-    /** Câmera em uso. Muda em [switchFacing]. */
     var cameraId: String = pickCameraId(front = false)
         private set
     private var characteristics: CameraCharacteristics = manager.getCameraCharacteristics(cameraId)
 
-    /** Graus, no sentido horário, que a imagem do sensor precisa girar para ficar em pé com o aparelho na posição natural. */
     var sensorOrientation: Int = orientationOf(characteristics)
         private set
 
@@ -63,7 +53,6 @@ class CameraController(
     private var encoderSurface: Surface? = null
     private var preview: Preview? = null
 
-    /** FPS que a câmera deve produzir. Vale para a próxima sessão e para a atual (veja [setFps]). */
     @Volatile
     var targetFps: Int = DEFAULT_FPS
 
@@ -75,7 +64,6 @@ class CameraController(
     private fun fpsRangesOf(c: CameraCharacteristics): Array<Range<Int>> =
         c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: emptyArray()
 
-    /** Primeira câmera da frente ou de trás; se não houver, qualquer uma. */
     private fun pickCameraId(front: Boolean): String {
         val ids = manager.cameraIdList
         val wanted = if (front) CameraCharacteristics.LENS_FACING_FRONT else CameraCharacteristics.LENS_FACING_BACK
@@ -84,7 +72,6 @@ class CameraController(
             ?: throw IllegalStateException("Este aparelho não tem câmera")
     }
 
-    /** Id da câmera do lado pedido, ou `null` se o aparelho não a tem. */
     private fun idFor(front: Boolean): String? {
         val wanted = if (front) CameraCharacteristics.LENS_FACING_FRONT else CameraCharacteristics.LENS_FACING_BACK
         return manager.cameraIdList.firstOrNull {
@@ -92,7 +79,6 @@ class CameraController(
         }
     }
 
-    /** O aparelho tem câmera frontal e traseira? */
     fun canSwitch(): Boolean = idFor(front = true) != null && idFor(front = false) != null
 
     private fun bind(id: String) {
@@ -105,7 +91,6 @@ class CameraController(
 
     private fun streamMap() = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
 
-    /** Tamanhos que a câmera entrega para um codificador. */
     fun encoderSizes(): List<Size> = encoderSizesOf(characteristics)
 
     private fun encoderSizesOf(c: CameraCharacteristics): List<Size> {
@@ -115,7 +100,6 @@ class CameraController(
         return sizes?.toList() ?: emptyList()
     }
 
-    /** FPS máximo que a câmera sustenta no tamanho, segundo a duração mínima de frame. */
     fun maxFps(size: Size): Int = maxFpsOf(characteristics, size)
 
     private fun maxFpsOf(c: CameraCharacteristics, size: Size): Int {
@@ -125,7 +109,6 @@ class CameraController(
         return if (nanos > 0) (1_000_000_000.0 / nanos).toInt() else DEFAULT_FPS
     }
 
-    /** FPS fixos que a câmera aceita no modo normal, de [MIN_FPS_OPTION] até [DEFAULT_FPS]. */
     fun fixedFpsOptions(): List<Int> = fixedFpsOf(aeRanges)
 
     private fun fixedFpsOf(ranges: Array<Range<Int>>): List<Int> =
@@ -151,7 +134,6 @@ class CameraController(
     private fun currentPreview(textureId: Long, size: Size) =
         Preview(textureId, size.width, size.height, sensorOrientation, isFrontFacing, canSwitch())
 
-    /** Abre a câmera atual e monta a sessão com as saídas que existirem. */
     @SuppressLint("MissingPermission")
     private fun openCurrent(cameraHandler: Handler, onResult: (Result<Unit>) -> Unit) {
         try {
@@ -210,15 +192,6 @@ class CameraController(
         }
     }
 
-    /**
-     * Troca entre a câmera da frente e a de trás **sem parar o codificador**: a superfície dele
-     * é a mesma, só a câmera que escreve nela muda. O vídeo fica parado por cerca de um segundo
-     * enquanto a câmera nova abre.
-     *
-     * Com a transmissão ligada, a câmera nova precisa oferecer o mesmo tamanho e o mesmo FPS que
-     * o codificador usa (informados em [activeSize] e [targetFps]); senão seria preciso reiniciar
-     * o codificador, o que não é feito, e a troca é recusada.
-     */
     fun switchFacing(front: Boolean, activeSize: Size?, onResult: (Result<Preview>) -> Unit) {
         val current = preview ?: return onResult(Result.failure(IllegalStateException("Abra a prévia primeiro")))
         val worker = handler ?: return onResult(Result.failure(IllegalStateException("A câmera está fechada")))
@@ -251,7 +224,6 @@ class CameraController(
 
         val oldId = cameraId
         worker.post {
-            // Fecha só a câmera e a sessão: as superfícies (prévia e codificador) ficam.
             runCatching { session?.close() }
             session = null
             runCatching { device?.close() }
@@ -268,7 +240,6 @@ class CameraController(
                         onResult(Result.success(updated))
                     },
                     onFailure = { erro ->
-                        // Tenta voltar à câmera anterior; se também falhar, é um erro fatal.
                         bind(oldId)
                         openCurrent(worker) { volta ->
                             volta.onFailure { onFatal("Não consegui trocar de câmera nem voltar à anterior.") }
@@ -280,7 +251,6 @@ class CameraController(
         }
     }
 
-    /** Liga a saída do codificador. A prévia continua na mesma textura. */
     fun attachEncoder(surface: Surface, onResult: (Result<Unit>) -> Unit) {
         encoderSurface = surface
         rebuildSession(onResult)
@@ -292,16 +262,11 @@ class CameraController(
         rebuildSession(onResult)
     }
 
-    /**
-     * Muda o FPS com a câmera ligada, só trocando o pedido repetido: não reinicia a sessão
-     * nem o codificador, então a imagem não pisca e o cliente não percebe corte.
-     */
     fun setFps(fps: Int, onResult: (Result<Unit>) -> Unit) {
         targetFps = fps
         val camera = device
         val active = session
         val worker = handler
-        // Sem sessão aberta, o valor novo é aplicado quando ela abrir.
         if (camera == null || active == null || worker == null) return onResult(Result.success(Unit))
         worker.post {
             try {

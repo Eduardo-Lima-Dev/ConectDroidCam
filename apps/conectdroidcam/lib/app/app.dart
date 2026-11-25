@@ -23,14 +23,12 @@ class ConectDroidCamApp extends StatelessWidget {
   ThemeData _theme(Brightness brightness) => ThemeData(
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
-      // Verde do anel da logo.
       seedColor: const Color(0xFF62F713),
       brightness: brightness,
     ),
   );
 }
 
-/// Escolhe o papel pela plataforma: celular é emissor, computador é receptor.
 class _RoleGate extends StatelessWidget {
   const _RoleGate();
 

@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-# Verifica se um dispositivo V4L2 virtual serve de webcam para navegadores, Zoom e OBS.
-#
-# Alimenta o dispositivo com uma imagem de teste por alguns segundos e confere o que
-# importa para quem o vai listar:
-#   1. o dispositivo anuncia CAPTURA e NÃO anuncia SAÍDA (exclusive_caps=1). Com os dois
-#      anunciados, Chromium, Firefox e Zoom costumam não listar a câmera;
-#   2. um leitor independente recebe os frames.
-#
-# O que isto NÃO prova: que o OBS, o Chromium e o Firefox mostram a imagem. Isso precisa ser
-# conferido à mão (a lista no fim do script diz como).
-#
-# Uso: scripts/spikes/verificar-webcam.sh [/dev/video10]
 set -euo pipefail
 
 DEV="${1:-/dev/video10}"
@@ -47,8 +35,6 @@ case "$card" in
 esac
 
 echo "== um leitor independente recebe frames?"
-# Duas tentativas, avisando quando a primeira falha: logo depois de o dispositivo ser criado,
-# a primeira leitura já falhou uma vez sem causa conhecida e passou nas seguintes.
 leitura=""
 for tentativa in 1 2; do
   leitura="$(timeout -s KILL 8 ffmpeg -hide_banner -f v4l2 -i "$DEV" -t 3 -f null - 2>&1 | tr '\r' '\n' | grep -E '^frame=' | tail -1 || true)"

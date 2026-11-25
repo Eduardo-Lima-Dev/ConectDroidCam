@@ -8,7 +8,6 @@ import '../domain/sender_models.dart';
 import '../../update/application/update_controller.dart';
 import '../../update/presentation/update_banner.dart';
 
-/// Tela do celular: prévia da câmera, escolha da resolução e controle da transmissão.
 class SenderPage extends ConsumerStatefulWidget {
   const SenderPage({super.key});
 
@@ -19,7 +18,6 @@ class SenderPage extends ConsumerStatefulWidget {
 class _SenderPageState extends ConsumerState<SenderPage> {
   bool _pairingDialogOpen = false;
 
-  /// Mostra o código de pareamento por cima de tudo, até o usuário responder ou o pedido acabar.
   void _syncPairingDialog(PairingRequestEvent? prompt) {
     if (prompt != null && !_pairingDialogOpen) {
       _pairingDialogOpen = true;
@@ -36,16 +34,12 @@ class _SenderPageState extends ConsumerState<SenderPage> {
   @override
   void initState() {
     super.initState();
-    // Depois do primeiro frame, para o pedido de permissão não competir com a montagem.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final updater = ref.read(updateControllerProvider.notifier);
-      // A procura em segundo plano pede a permissão de notificação: só depois do fluxo da
-      // câmera, para os dois pedidos não aparecerem ao mesmo tempo.
       ref
           .read(senderControllerProvider.notifier)
           .start()
           .whenComplete(updater.enableBackgroundChecks);
-      // Procura versão nova ao abrir; sem internet, simplesmente não aparece aviso.
       updater.check();
     });
   }
@@ -151,7 +145,6 @@ class _Message extends StatelessWidget {
   }
 }
 
-/// Tela principal do emissor. Guarda se está em tela cheia e se o menu está aberto.
 class _Console extends ConsumerStatefulWidget {
   const _Console({required this.state});
 
@@ -171,7 +164,6 @@ class _ConsoleState extends ConsumerState<_Console> {
       _fullscreen = value;
       _menuOpen = false;
     });
-    // Tela cheia esconde as barras do sistema; sair as traz de volta.
     SystemChrome.setEnabledSystemUIMode(
       value ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
@@ -189,7 +181,6 @@ class _ConsoleState extends ConsumerState<_Console> {
   Widget build(BuildContext context) {
     final state = widget.state;
     return PopScope(
-      // O botão voltar sai da tela cheia antes de sair do app.
       canPop: !_fullscreen,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _setFullscreen(false);
@@ -226,8 +217,6 @@ class _ConsoleState extends ConsumerState<_Console> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Em retrato a prévia também é retrato: ela ocupa a metade de cima
-              // e se ajusta sozinha à proporção da imagem.
               Expanded(flex: 5, child: preview),
               const SizedBox(height: 16),
               Expanded(flex: 6, child: panel),
@@ -245,7 +234,6 @@ class _ConsoleState extends ConsumerState<_Console> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            // Tocar na imagem com o menu aberto só fecha o menu.
             _PreviewBox(
               info: state.preview,
               onTap: _menuOpen ? () => setState(() => _menuOpen = false) : null,
@@ -285,7 +273,6 @@ class _ConsoleState extends ConsumerState<_Console> {
             ),
             if (_menuOpen)
               Positioned(
-                // Abaixo dos botões, sem cobrir mais da imagem do que o necessário.
                 top: 64,
                 right: 8,
                 left: wide ? null : 8,
@@ -300,7 +287,6 @@ class _ConsoleState extends ConsumerState<_Console> {
   }
 }
 
-/// Botão redondo e discreto que fica por cima da imagem.
 class _OverlayButton extends StatelessWidget {
   const _OverlayButton({
     required this.icon,
@@ -326,7 +312,6 @@ class _OverlayButton extends StatelessWidget {
   }
 }
 
-/// O mesmo painel de controle, num cartão translúcido sobre a imagem.
 class _MenuCard extends StatelessWidget {
   const _MenuCard({required this.state});
 
@@ -382,7 +367,6 @@ class _PreviewBox extends StatelessWidget {
                   child: info == null
                       ? const SizedBox.shrink()
                       : Transform.flip(
-                          // Espelho só na prévia da câmera frontal; o vídeo enviado não é espelhado.
                           flipX: info!.isFront,
                           child: RotatedBox(
                             quarterTurns: info!.quarterTurns,
@@ -449,7 +433,6 @@ class _ControlPanel extends ConsumerWidget {
         const SizedBox(height: 8),
         const UpdateBanner(),
         const SizedBox(height: 12),
-        // O botão principal fica no alto, sempre visível, sem precisar rolar o painel.
         if (state.isStreaming)
           FilledButton.tonalIcon(
             onPressed: state.busy ? null : controller.stopStreaming,
@@ -477,7 +460,6 @@ class _ControlPanel extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: 8),
-        // O aviso fica junto do botão, visível antes de transmitir, e não no fim do painel.
         Text(
           'A conexão é criptografada. O computador novo só consegue ver a câmera depois '
           'que você confirmar o código de pareamento.',
@@ -489,7 +471,6 @@ class _ControlPanel extends ConsumerWidget {
         Text('Resolução', style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
         if (state.isStreaming)
-          // Transmitindo: só a resolução em uso, as outras somem.
           _ModeTile(
             item:
                 caps.find(state.selected) ??
@@ -543,7 +524,6 @@ class _ControlPanel extends ConsumerWidget {
   }
 }
 
-/// Pergunta se o código mostrado aqui é o mesmo que aparece no computador.
 class _PairingDialog extends ConsumerWidget {
   const _PairingDialog();
 
@@ -590,7 +570,6 @@ class _PairingDialog extends ConsumerWidget {
   }
 }
 
-/// Computadores pareados, com a opção de remover o pareamento.
 class _PairedList extends ConsumerWidget {
   const _PairedList({required this.state});
 
@@ -692,7 +671,6 @@ class _ModeTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: ListTile(
-        // Em uso, o bloco continua com cara de selecionado, só não responde ao toque.
         enabled: usable || inUse,
         dense: true,
         shape: RoundedRectangleBorder(
@@ -719,7 +697,6 @@ class _ModeTile extends StatelessWidget {
   }
 }
 
-/// Seletor das demais resoluções que o aparelho oferece além das três principais.
 class _ExtraModes extends StatelessWidget {
   const _ExtraModes({
     required this.extras,
@@ -742,7 +719,6 @@ class _ExtraModes extends StatelessWidget {
         enabled: enabled,
         width: double.infinity,
         label: const Text('Outras resoluções'),
-        // Só mostra um valor quando a escolha atual é uma das extras.
         initialSelection: selected.isMain ? null : selected,
         requestFocusOnTap: false,
         onSelected: (mode) {
