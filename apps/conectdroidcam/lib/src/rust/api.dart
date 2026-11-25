@@ -9,17 +9,11 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 // These functions are ignored because they are not marked as `pub`: `clear_session`, `command`, `failure`, `load_identity`, `new`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
 
-/// Começa a procurar celulares. Cada aparição e cada saída chegam em `updates`; se a busca
-/// não puder começar, chega um item com `error`.
 Stream<PhoneInfo> startDiscovery() =>
     CdcCore.instance.api.crateApiStartDiscovery();
 
-/// Para a busca.
 Future<void> stopDiscovery() => CdcCore.instance.api.crateApiStopDiscovery();
 
-/// Conecta a um celular e entrega o vídeo à webcam virtual `v4l2_device` (sem ela, só mede).
-/// Os eventos chegam em `events` até a sessão terminar, e o último é sempre `Ended` ou
-/// `Failed`: inclusive quando a conexão nem abre ou já há uma sessão.
 Stream<ReceiverEvent> connectPhone({
   required String address,
   String? v4L2Device,
@@ -38,15 +32,12 @@ Stream<ReceiverEvent> connectPhone({
   pinnedFingerprint: pinnedFingerprint,
 );
 
-/// Encerra a sessão em andamento, se houver.
 Future<void> disconnectPhone() =>
     CdcCore.instance.api.crateApiDisconnectPhone();
 
-/// O usuário confirmou (ou recusou) o código de pareamento mostrado na tela.
 Future<String?> confirmPairing({required bool accept}) =>
     CdcCore.instance.api.crateApiConfirmPairing(accept: accept);
 
-/// Pede ao celular que comece a transmitir neste tamanho e FPS.
 Future<String?> phoneStartStream({
   required int width,
   required int height,
@@ -57,53 +48,43 @@ Future<String?> phoneStartStream({
   fps: fps,
 );
 
-/// Pede ao celular que pare de transmitir, mantendo a conexão.
 Future<String?> phoneStopStream() =>
     CdcCore.instance.api.crateApiPhoneStopStream();
 
-/// Muda o FPS com a transmissão ligada.
 Future<String?> phoneSetFps({required int fps}) =>
     CdcCore.instance.api.crateApiPhoneSetFps(fps: fps);
 
-/// Troca a câmera do celular: `Some(true)` frontal, `Some(false)` traseira, `None` alterna.
 Future<String?> phoneSwitchCamera({bool? front}) =>
     CdcCore.instance.api.crateApiPhoneSwitchCamera(front: front);
 
-/// `true` se o `ffmpeg` está instalado: sem ele não há como escrever na webcam virtual.
+Future<String?> startIdleFeed({
+  required String device,
+  required int width,
+  required int height,
+}) => CdcCore.instance.api.crateApiStartIdleFeed(
+  device: device,
+  width: width,
+  height: height,
+);
+
+Future<void> stopIdleFeed() => CdcCore.instance.api.crateApiStopIdleFeed();
+
 Future<bool> ffmpegAvailable() =>
     CdcCore.instance.api.crateApiFfmpegAvailable();
 
-/// Nome deste computador, que o celular mostra.
 Future<String> computerName() => CdcCore.instance.api.crateApiComputerName();
 
-/// Formato do quadro entregue à webcam virtual.
-enum OutputFormat {
-  /// Vertical se o celular estiver em pé ao conectar, horizontal se estiver deitado.
-  auto,
-  horizontal,
-  vertical,
-}
+enum OutputFormat { auto, horizontal, vertical }
 
-/// Tamanho do quadro entregue à webcam virtual. Não acompanha a resolução do celular.
 enum OutputSize { hd, fullHd, qhd }
 
-/// Um celular achado na rede.
 class PhoneInfo {
   final String id;
   final String name;
   final String host;
-
-  /// `ip:porta` para conectar, ou `None` se o celular não anunciou um IPv4 utilizável.
   final String? address;
   final int port;
-
-  /// `true` quando o celular saiu da rede; nesse caso só `id` vale.
   final bool lost;
-
-  /// Se a busca não pôde começar ou parou, o motivo; nesse caso só este campo vale.
-  ///
-  /// Os erros viajam no fluxo e não como `Err`: a ponte entrega o `Err` de uma função com
-  /// fluxo num `Future` interno que ninguém escuta, e ele viraria uma exceção solta.
   final String? error;
 
   const PhoneInfo({
@@ -140,14 +121,11 @@ class PhoneInfo {
           error == other.error;
 }
 
-/// Uma resolução oferecida pelo celular.
 class PhoneMode {
   final int width;
   final int height;
   final bool available;
   final int maxFps;
-
-  /// Por que não está disponível; vazio quando está.
   final String reason;
 
   const PhoneMode({
@@ -193,16 +171,10 @@ class ReceiverEvent {
   final double statsKbps;
   final double statsDelayMs;
   final BigInt frames;
-
-  /// Bytes de um quadro JPEG, só no evento `Preview`.
   final Uint8List preview;
-
-  /// Só em `Capabilities`.
   final List<PhoneMode> modes;
   final Uint32List fpsOptions;
   final bool streaming;
-
-  /// A câmera em uso é a frontal.
   final bool front;
   final bool canSwitch;
 
@@ -279,56 +251,24 @@ class ReceiverEvent {
           canSwitch == other.canSwitch;
 }
 
-/// Que tipo de coisa um [`ReceiverEvent`] descreve. Só os campos daquele tipo valem.
 enum ReceiverEventKind {
-  /// O celular se apresentou: `text` = nome, `text2` = sistema.
   hello,
-
-  /// O que o celular entrega: `width`, `height`, `fps`, `bitrate_kbps`, `rotation`.
   profile,
-
-  /// A saída de vídeo (re)iniciou: `canvas_width`, `canvas_height`, `rotation` e, em
-  /// `text`, o dispositivo em que escreve (vazio se nenhum).
   output,
-
-  /// Estatísticas do último segundo: `stats_*` e `frames`.
   stats,
-
-  /// Um quadro JPEG da prévia: `preview`.
   preview,
-
-  /// O que o celular sabe fazer e seu estado: `modes`, `fps_options`, `streaming`,
-  /// `front` e `can_switch`.
   capabilities,
-
-  /// O celular pediu pareamento: `text` = código de 6 dígitos que ele também mostra,
-  /// `text2` = impressão digital do celular.
   pairingCode,
-
-  /// Pareamento concluído: `text` = impressão digital do celular, para guardar.
   paired,
-
-  /// Pareamento recusado ou não concluído: `text` = motivo.
   pairingDenied,
-
-  /// O celular reportou um erro: `text` = código, `text2` = mensagem.
   senderError,
-
-  /// Aviso que não interrompe: `text`.
   notice,
-
-  /// A sessão terminou normalmente.
   ended,
-
-  /// A sessão terminou por erro: `text` = explicação.
   failed,
 }
 
-/// Uma webcam virtual de tamanho fixo, para um tamanho e um formato.
 class ShapeDevice {
   final OutputSize size;
-
-  /// `true` para vertical, `false` para horizontal.
   final bool vertical;
   final String path;
 

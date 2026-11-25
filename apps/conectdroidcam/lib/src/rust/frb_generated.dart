@@ -64,7 +64,7 @@ class CdcCore extends BaseEntrypoint<CdcCoreApi, CdcCoreApiImpl, CdcCoreWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1250170594;
+  int get rustContentHash => -1202667186;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -108,7 +108,15 @@ abstract class CdcCoreApi extends BaseApi {
 
   Stream<PhoneInfo> crateApiStartDiscovery();
 
+  Future<String?> crateApiStartIdleFeed({
+    required String device,
+    required int width,
+    required int height,
+  });
+
   Future<void> crateApiStopDiscovery();
+
+  Future<void> crateApiStopIdleFeed();
 }
 
 class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
@@ -449,6 +457,42 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
       const TaskConstMeta(debugName: "start_discovery", argNames: ["updates"]);
 
   @override
+  Future<String?> crateApiStartIdleFeed({
+    required String device,
+    required int width,
+    required int height,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(device, serializer);
+          sse_encode_u_32(width, serializer);
+          sse_encode_u_32(height, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiStartIdleFeedConstMeta,
+        argValues: [device, width, height],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStartIdleFeedConstMeta => const TaskConstMeta(
+    debugName: "start_idle_feed",
+    argNames: ["device", "width", "height"],
+  );
+
+  @override
   Future<void> crateApiStopDiscovery() {
     return handler.executeNormal(
       NormalTask(
@@ -457,7 +501,7 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -474,6 +518,33 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
 
   TaskConstMeta get kCrateApiStopDiscoveryConstMeta =>
       const TaskConstMeta(debugName: "stop_discovery", argNames: []);
+
+  @override
+  Future<void> crateApiStopIdleFeed() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiStopIdleFeedConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStopIdleFeedConstMeta =>
+      const TaskConstMeta(debugName: "stop_idle_feed", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
