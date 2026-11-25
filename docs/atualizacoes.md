@@ -22,6 +22,8 @@ Sem internet, ou com o GitHub fora, o app simplesmente não mostra o aviso.
 
 Com o app fechado, o Android também procura versão nova a cada 6 horas (com internet), pelo WorkManager, e mostra a notificação **Nova versão do ConectDroidCam**. Tocar nela abre o app, onde está o botão **Atualizar**. Cada versão é avisada uma vez. No Android 13 ou mais novo, o app pede a permissão de notificação depois da permissão da câmera; sem ela, só o aviso dentro do app continua.
 
+O WorkManager guarda as tarefas num banco Room e cria a classe `WorkDatabase_Impl` por reflexão, chamando o construtor sem argumentos. No build de release, o R8 remove esse construtor porque nada o chama diretamente, e o app fecha ao abrir (`NoSuchMethodException: androidx.work.impl.WorkDatabase_Impl.<init>`). Por isso o `android/app/proguard-rules.pro` mantém o construtor de toda subclasse de `RoomDatabase`, e o build de release usa esse arquivo. Para conferir num APK: `dexdump classes*.dex` precisa mostrar `<init>` em `WorkDatabase_Impl`.
+
 O Android só atualiza um app se a versão nova tiver **a mesma assinatura** da instalada. Por isso:
 
 - Todas as releases são assinadas com a mesma chave de release.
