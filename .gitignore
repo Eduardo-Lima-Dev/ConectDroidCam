@@ -60,3 +60,5 @@ dist/
 *.key
 *.log
 spikes/**/captures/
+
+__pycache__/
