@@ -455,6 +455,28 @@ pub fn phone_switch_camera(front: Option<bool>) -> Option<String> {
     })
 }
 
+static IDLE: Mutex<Option<cdc_core::IdleFeed>> = Mutex::new(None);
+
+pub fn start_idle_feed(device: String, width: u32, height: u32) -> Option<String> {
+    stop_idle_feed();
+    match cdc_core::IdleFeed::start("ffmpeg", &device, width, height) {
+        Ok(feed) => {
+            if let Ok(mut guard) = IDLE.lock() {
+                *guard = Some(feed);
+            }
+            None
+        }
+        Err(e) => Some(e.to_string()),
+    }
+}
+
+pub fn stop_idle_feed() {
+    let feed = IDLE.lock().ok().and_then(|mut guard| guard.take());
+    if let Some(feed) = feed {
+        feed.stop();
+    }
+}
+
 pub fn ffmpeg_available() -> bool {
     Command::new("ffmpeg")
         .arg("-version")

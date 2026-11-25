@@ -141,7 +141,7 @@ O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imag
 - [ ] Linux: assistente que detecta o módulo `v4l2loopback`, o Secure Boot e o OBS em Flatpak.
 - [ ] macOS: plugin do OBS (memória compartilhada e socket Unix) e instalador.
 - [ ] macOS: extensão de câmera, atrás de um gate (só compila com conta paga).
-- [ ] Quadro neutro, sem texto nem marca, quando não há sinal.
+- [x] Imagem neutra (preta) na webcam virtual enquanto a conexão está caída e o PC tenta reconectar: o OBS não congela no último quadro.
 
 ### Fase 6 — USB
 
@@ -154,13 +154,14 @@ O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imag
 
 - [ ] Testes negativos: sem pareamento, impressão digital trocada, repetição, excesso de conexões, frame malformado.
 - [ ] `docs/security.md` com a análise de ameaças; logs sem mídia, chaves nem impressões digitais completas.
-- [ ] Reconexão em até 15 s após queda curta; troca entre USB e Wi-Fi.
+- [x] Reconexão automática após queda: o PC tenta de novo por cerca de 30 s (1, 2, 3 e 5 s entre as tentativas) e retoma a transmissão na mesma resolução e FPS. Não tenta quando foi o usuário que desconectou nem em falha de segurança. **Falta** a troca entre USB e Wi-Fi.
 - [ ] **Medições que ainda não existem:** latência de ponta a ponta (p50 e p95, filmando um relógio), sessões de 60 minutos três vezes por aparelho, consumo de bateria e temperatura.
 
 ### Fase 8 — Empacotamento e release
 
-- [ ] Android: APK assinado com chave própria, fora do repositório.
+- [x] Android: APK assinado com chave de release própria, fora do repositório (segredos do GitHub), com `versionCode` igual ao número do build. Veja [atualizacoes.md](atualizacoes.md).
 - [ ] **Linux: Flatpak para o Flathub** (instalador principal). Plano, pré-requisitos e riscos na seção "Distribuição no Flathub" abaixo.
+- [x] Atualizações sem loja: repositório Flatpak próprio e assinado no GitHub Pages, atualizador e notificação no Android e aviso de versão nova no app do Linux. Releases `build-N` automáticas a cada push na `main`. Veja [atualizacoes.md](atualizacoes.md).
 - [ ] Linux, secundário: um `.tar.gz` do pacote de release (já compila e roda fora da pasta do projeto), PKGBUILD para Arch, `.deb` e AppImage (os ícones e o `.desktop` já estão em `packaging/linux/`).
 - [ ] macOS: `.dmg` com assinatura ad-hoc, com o plugin do OBS.
 - [ ] iOS: instalação pelo Mac, documentada.

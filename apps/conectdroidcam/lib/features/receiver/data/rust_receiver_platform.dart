@@ -170,6 +170,13 @@ class RustReceiverPlatform implements ReceiverPlatform {
   Future<void> disconnect() => api.disconnectPhone();
 
   @override
+  Future<String?> startIdleFeed(String device, int width, int height) =>
+      api.startIdleFeed(device: device, width: width, height: height);
+
+  @override
+  Future<void> stopIdleFeed() => api.stopIdleFeed();
+
+  @override
   Future<String?> confirmPairing(bool accept) async =>
       api.confirmPairing(accept: accept);
 

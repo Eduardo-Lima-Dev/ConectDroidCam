@@ -33,6 +33,10 @@ class FakeReceiverPlatform implements ReceiverPlatform {
 
   final List<bool> pairingAnswers = [];
 
+  final List<String> idleFeed = [];
+
+  List<ReceiverUpdate> Function(int connectNumber)? scriptedConnect;
+
   final _phones = StreamController<PhoneChange>.broadcast();
   StreamController<ReceiverUpdate>? _session;
 
@@ -74,8 +78,17 @@ class FakeReceiverPlatform implements ReceiverPlatform {
     lastFormat = format;
     lastSize = size;
     lastShapeDevices = shapeDevices;
-    _session = StreamController<ReceiverUpdate>();
-    return _session!.stream;
+    final session = _session = StreamController<ReceiverUpdate>();
+    final script = scriptedConnect;
+    if (script != null) {
+      final events = script(connects);
+      scheduleMicrotask(() {
+        for (final e in events) {
+          if (!session.isClosed) session.add(e);
+        }
+      });
+    }
+    return session.stream;
   }
 
   @override
@@ -83,6 +96,15 @@ class FakeReceiverPlatform implements ReceiverPlatform {
     disconnects++;
     send(const EndedUpdate());
   }
+
+  @override
+  Future<String?> startIdleFeed(String device, int width, int height) async {
+    idleFeed.add('start $device ${width}x$height');
+    return null;
+  }
+
+  @override
+  Future<void> stopIdleFeed() async => idleFeed.add('stop');
 
   final List<String> commands = [];
 

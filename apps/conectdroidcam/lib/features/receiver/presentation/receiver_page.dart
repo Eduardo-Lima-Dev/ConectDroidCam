@@ -273,9 +273,8 @@ class _FinderState extends ConsumerState<_Finder> {
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               widget.state.discoveryError ??
-                  'Nenhum celular encontrado. No celular, abra o ConectDroidCam e '
-                      'toque em "Iniciar transmissão". Ele aparece aqui sozinho '
-                      'quando estiver na mesma rede.',
+                  'Nenhum celular encontrado. Abra o ConectDroidCam no celular, '
+                      'na mesma rede Wi-Fi deste computador: ele aparece aqui sozinho.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -304,10 +303,10 @@ class _FinderState extends ConsumerState<_Finder> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
-          title: const Text('Conectar sozinho aos celulares já usados'),
+          title: const Text('Conectar sozinho aos celulares pareados'),
           subtitle: const Text(
-            'Depois da primeira conexão, o celular conecta assim que aparecer na rede. '
-            'Não é uma proteção: sem pareamento, outro aparelho pode usar o mesmo nome.',
+            'Um celular já pareado conecta assim que aparece na rede. A conexão só é '
+            'aceita se o certificado for o mesmo registrado no pareamento.',
           ),
           value: widget.state.autoConnect,
           onChanged: controller.setAutoConnect,
@@ -440,6 +439,8 @@ class _Connected extends ConsumerWidget {
     final theme = Theme.of(context);
     final controller = ref.read(receiverControllerProvider.notifier);
     final connecting = state.phase == ReceiverPhase.connecting;
+    final reconnecting = state.phase == ReceiverPhase.reconnecting;
+    final attempts = ref.read(reconnectDelaysProvider).length;
     final incoming = state.incoming;
     final outgoing = state.outgoing;
     final stats = state.stats;
@@ -465,12 +466,18 @@ class _Connected extends ConsumerWidget {
             Icon(
               Icons.circle,
               size: 10,
-              color: connecting ? Colors.amberAccent : Colors.greenAccent,
+              color: connecting || reconnecting
+                  ? Colors.amberAccent
+                  : Colors.greenAccent,
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                connecting
+                reconnecting
+                    ? 'Conexão perdida. Reconectando a '
+                          '${state.phoneName ?? state.connectedTo}…'
+                          '${state.reconnectAttempt > 0 ? ' (tentativa ${state.reconnectAttempt} de $attempts)' : ''}'
+                    : connecting
                     ? 'Conectando a ${state.connectedTo}…'
                     : 'Conectado a ${state.phoneName ?? state.connectedTo}',
                 style: theme.textTheme.titleSmall,
@@ -487,10 +494,19 @@ class _Connected extends ConsumerWidget {
           _PhoneControls(state: state),
         ],
         const SizedBox(height: 14),
+        if (reconnecting) ...[
+          Text(
+            'Enquanto isso, a webcam virtual mostra uma imagem preta, sem congelar.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         OutlinedButton.icon(
           onPressed: controller.disconnect,
-          icon: const Icon(Icons.link_off),
-          label: const Text('Desconectar'),
+          icon: Icon(reconnecting ? Icons.close : Icons.link_off),
+          label: Text(reconnecting ? 'Cancelar' : 'Desconectar'),
         ),
       ],
     );
@@ -773,6 +789,11 @@ class _StatusBar extends StatelessWidget {
       ReceiverPhase.connecting => (
         Icons.sync,
         'Conectando a ${state.phoneName ?? state.connectedTo}…',
+        Colors.amberAccent,
+      ),
+      ReceiverPhase.reconnecting => (
+        Icons.sync_problem,
+        'Conexão perdida. Reconectando a ${state.phoneName ?? state.connectedTo}…',
         Colors.amberAccent,
       ),
       _ when state.phones.isNotEmpty => (

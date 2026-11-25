@@ -8,7 +8,14 @@ import '../data/receiver_settings_store.dart';
 import '../data/rust_receiver_platform.dart';
 import '../domain/receiver_models.dart';
 
-enum ReceiverPhase { starting, unavailable, idle, connecting, connected }
+enum ReceiverPhase {
+  starting,
+  unavailable,
+  idle,
+  connecting,
+  connected,
+  reconnecting,
+}
 
 class PairingPrompt {
   const PairingPrompt({required this.code, required this.phoneFingerprint});
@@ -39,6 +46,7 @@ class ReceiverState {
     this.capabilities,
     this.remoteMode,
     this.remoteFps = 30,
+    this.reconnectAttempt = 0,
     this.notice,
     this.error,
     this.discoveryError,
@@ -77,13 +85,17 @@ class ReceiverState {
 
   bool get phoneStreaming => capabilities?.streaming ?? false;
 
+  final int reconnectAttempt;
+
   final String? notice;
 
   final String? error;
   final String? discoveryError;
 
   bool get isBusy =>
-      phase == ReceiverPhase.connecting || phase == ReceiverPhase.connected;
+      phase == ReceiverPhase.connecting ||
+      phase == ReceiverPhase.connected ||
+      phase == ReceiverPhase.reconnecting;
 
   bool get hasConectDroidCamDevice => devices.any((d) => d.isConectDroidCam);
 
@@ -112,6 +124,7 @@ class ReceiverState {
     PhoneCapabilities? Function()? capabilities,
     PhoneMode? Function()? remoteMode,
     int? remoteFps,
+    int? reconnectAttempt,
     String? Function()? notice,
     String? Function()? error,
     String? Function()? discoveryError,
@@ -141,6 +154,7 @@ class ReceiverState {
       capabilities: capabilities != null ? capabilities() : this.capabilities,
       remoteMode: remoteMode != null ? remoteMode() : this.remoteMode,
       remoteFps: remoteFps ?? this.remoteFps,
+      reconnectAttempt: reconnectAttempt ?? this.reconnectAttempt,
       notice: notice != null ? notice() : this.notice,
       error: error != null ? error() : this.error,
       discoveryError: discoveryError != null
@@ -152,6 +166,19 @@ class ReceiverState {
 
 final receiverPlatformProvider = Provider<ReceiverPlatform>(
   (ref) => RustReceiverPlatform(),
+);
+
+final reconnectDelaysProvider = Provider<List<Duration>>(
+  (ref) => const [
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 3),
+    Duration(seconds: 5),
+    Duration(seconds: 5),
+    Duration(seconds: 5),
+    Duration(seconds: 5),
+    Duration(seconds: 5),
+  ],
 );
 
 final receiverSettingsStoreProvider = Provider<ReceiverSettingsStore>(
@@ -185,6 +212,16 @@ class ReceiverController extends Notifier<ReceiverState> {
 
   final Set<String> _noAuto = {};
 
+  bool _userStopped = false;
+  bool _established = false;
+  bool _pairingFailed = false;
+  int _run = 0;
+  Completer<bool>? _attempt;
+  bool _idleOn = false;
+  bool _resumeStream = false;
+  PhoneMode? _resumeMode;
+  int _resumeFps = 30;
+
   @override
   ReceiverState build() {
     final platform = _platform = ref.read(receiverPlatformProvider);
@@ -194,7 +231,9 @@ class ReceiverController extends Notifier<ReceiverState> {
       _rediscover?.cancel();
       _discovery?.cancel();
       _session?.cancel();
+      _run++;
       unawaited(platform.disconnect().catchError((Object _) {}));
+      unawaited(platform.stopIdleFeed().catchError((Object _) {}));
       unawaited(platform.stopDiscovery().catchError((Object _) {}));
       try {
         preview.update(null);
@@ -340,6 +379,7 @@ class ReceiverController extends Notifier<ReceiverState> {
     if (address == null) return;
     final name = state.phoneName;
     final id = _connectedId;
+    _userStopped = true;
     await _platform.disconnect();
     for (var i = 0; i < 100 && state.isBusy; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -395,6 +435,12 @@ class ReceiverController extends Notifier<ReceiverState> {
             .where((p) => p.address == target)
             .map((p) => p.id)
             .firstOrNull;
+    _run++;
+    _userStopped = false;
+    _established = false;
+    _pairingFailed = false;
+    _resumeStream = false;
+    await _stopIdle();
     state = state.copyWith(
       phase: ReceiverPhase.connecting,
       connectedTo: () => target,
@@ -407,6 +453,10 @@ class ReceiverController extends Notifier<ReceiverState> {
       notice: () => null,
       error: () => null,
     );
+    await _open(target);
+  }
+
+  Future<void> _open(String target) async {
     await _session?.cancel();
     _session = _platform
         .connect(
@@ -423,13 +473,95 @@ class ReceiverController extends Notifier<ReceiverState> {
         )
         .listen(
           _onUpdate,
-          onError: (Object e) => _finish(error: '$e'),
+          onError: (Object e) {
+            if (_completeAttempt(false)) return;
+            _finish(error: '$e');
+          },
           onDone: () {
-            if (state.isBusy) {
+            if (_completeAttempt(false)) return;
+            if (state.phase == ReceiverPhase.connecting ||
+                state.phase == ReceiverPhase.connected) {
               _finish(error: 'A conexão terminou de forma inesperada.');
             }
           },
         );
+  }
+
+  bool _completeAttempt(bool ok) {
+    final attempt = _attempt;
+    if (attempt == null || attempt.isCompleted) return false;
+    attempt.complete(ok);
+    return true;
+  }
+
+  bool get _shouldReconnect =>
+      !_userStopped &&
+      _established &&
+      !_pairingFailed &&
+      state.connectedTo != null;
+
+  Future<void> _beginReconnect() async {
+    final target = state.connectedTo!;
+    final run = ++_run;
+    _resumeStream = state.phoneStreaming;
+    _resumeMode = state.remoteMode;
+    _resumeFps = state.remoteFps;
+    _established = false;
+    final out = state.outgoing;
+    try {
+      ref.read(previewFrameProvider.notifier).update(null);
+    } on Object catch (_) {}
+    state = state.copyWith(
+      phase: ReceiverPhase.reconnecting,
+      reconnectAttempt: 0,
+      incoming: () => null,
+      stats: () => null,
+      capabilities: () => null,
+      pairing: () => null,
+      notice: () => null,
+      error: () => null,
+    );
+    await _startIdle(out);
+    final delays = ref.read(reconnectDelaysProvider);
+    for (var i = 0; i < delays.length; i++) {
+      await Future<void>.delayed(delays[i]);
+      if (run != _run) return;
+      state = state.copyWith(reconnectAttempt: i + 1);
+      await _stopIdle();
+      final attempt = _attempt = Completer<bool>();
+      await _open(target);
+      final ok = await attempt.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => false,
+      );
+      _attempt = null;
+      if (run != _run) return;
+      if (ok) return;
+      await _session?.cancel();
+      await _platform.disconnect();
+      await _startIdle(out);
+    }
+    if (run != _run) return;
+    await _stopIdle();
+    if (_connectedId case final id?) _noAuto.add(id);
+    _finish(
+      error:
+          'A conexão com o celular caiu e não voltou. Confira se o '
+          'ConectDroidCam está aberto no celular e conecte de novo.',
+    );
+  }
+
+  Future<void> _startIdle(OutgoingVideo? out) async {
+    final device = out?.device;
+    if (out == null || device == null || device.startsWith('null')) return;
+    final error = await _platform.startIdleFeed(device, out.width, out.height);
+    _idleOn = error == null;
+  }
+
+  Future<void> _stopIdle() async {
+    if (!_idleOn) return;
+    _idleOn = false;
+    await _platform.stopIdleFeed();
   }
 
   String _phoneKey(String address) => _connectedId ?? 'addr:$address';
@@ -444,14 +576,26 @@ class ReceiverController extends Notifier<ReceiverState> {
   Future<void> disconnect() async {
     if (!state.isBusy) return;
     if (_connectedId case final id?) _noAuto.add(id);
+    _userStopped = true;
+    if (state.phase == ReceiverPhase.reconnecting) {
+      _run++;
+      _completeAttempt(false);
+      await _platform.disconnect();
+      await _stopIdle();
+      _finish();
+      return;
+    }
     await _platform.disconnect();
   }
 
   void _onUpdate(ReceiverUpdate update) {
     switch (update) {
       case HelloUpdate(:final deviceName, :final platform):
+        _established = true;
+        _completeAttempt(true);
         state = state.copyWith(
           phase: ReceiverPhase.connected,
+          reconnectAttempt: 0,
           phoneName: () => deviceName,
           phonePlatform: () => platform,
         );
@@ -463,6 +607,7 @@ class ReceiverController extends Notifier<ReceiverState> {
       case PairedUpdate(:final phoneFingerprint):
         _rememberPairedPhone(phoneFingerprint);
       case PairingDeniedUpdate(:final reason):
+        _pairingFailed = true;
         if (_connectedId case final id?) _noAuto.add(id);
         state = state.copyWith(
           pairing: () => null,
@@ -491,9 +636,21 @@ class ReceiverController extends Notifier<ReceiverState> {
       case NoticeUpdate(:final message):
         state = state.copyWith(notice: () => message);
       case EndedUpdate():
+        if (_completeAttempt(false)) return;
+        if (state.phase == ReceiverPhase.reconnecting) return;
+        if (_shouldReconnect) {
+          unawaited(_beginReconnect());
+          return;
+        }
         if (_connectedId case final id?) _noAuto.add(id);
         _finish();
       case FailedUpdate(:final message):
+        if (_completeAttempt(false)) return;
+        if (state.phase == ReceiverPhase.reconnecting) return;
+        if (_shouldReconnect) {
+          unawaited(_beginReconnect());
+          return;
+        }
         if (_connectedId case final id?) _noAuto.add(id);
         _finish(error: message);
     }
@@ -523,6 +680,16 @@ class ReceiverController extends Notifier<ReceiverState> {
       try {
         ref.read(previewFrameProvider.notifier).update(null);
       } on Object catch (_) {}
+    }
+    if (_resumeStream) {
+      _resumeStream = false;
+      final resume = _resumeMode;
+      if (!caps.streaming &&
+          resume != null &&
+          caps.find(resume.width, resume.height)?.available == true) {
+        state = state.copyWith(remoteMode: () => resume, remoteFps: _resumeFps);
+        unawaited(startPhoneStream());
+      }
     }
   }
 
@@ -616,6 +783,7 @@ class ReceiverController extends Notifier<ReceiverState> {
     } on Object catch (_) {}
     state = state.copyWith(
       phase: ReceiverPhase.idle,
+      reconnectAttempt: 0,
       connectedTo: () => null,
       phoneName: () => null,
       phonePlatform: () => null,

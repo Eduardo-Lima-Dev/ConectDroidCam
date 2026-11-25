@@ -19,7 +19,7 @@ modules:
         --disable-ffplay --disable-ffprobe --disable-network --disable-autodetect
         --disable-x86asm --enable-ffmpeg --enable-avdevice --enable-avfilter
         --enable-swscale --enable-outdev=v4l2 --enable-protocol=file,pipe
-        --enable-demuxer=h264 --enable-parser=h264,mjpeg --enable-decoder=h264,mjpeg
+        --enable-demuxer=h264,rawvideo --enable-parser=h264,mjpeg --enable-decoder=h264,mjpeg,rawvideo
         --enable-encoder=mjpeg,rawvideo --enable-muxer=image2pipe,null,rawvideo
         --enable-filter=scale,transpose,pad,setsar,split,fps,null,format
       - make -j$(nproc)
