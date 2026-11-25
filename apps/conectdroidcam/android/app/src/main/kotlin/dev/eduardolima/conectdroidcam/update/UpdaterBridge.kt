@@ -1,5 +1,6 @@
 package dev.eduardolima.conectdroidcam.update
 
+import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -27,7 +28,8 @@ import java.io.File
  * O Android só aceita a atualização se ela tiver a mesma assinatura da versão instalada.
  *
  * MethodChannel `cdc/updater`: info, canInstall, openInstallSettings, downloadDir,
- * install(path). O resultado da instalação volta pelo método `installStatus` (do lado nativo
+ * install(path), enableBackgroundChecks (agenda a procura em segundo plano e, no Android 13+,
+ * pede a permissão de notificação). O resultado da instalação volta pelo método `installStatus` (do lado nativo
  * para o Flutter), com `status` = pendingUser | success | conflict | failure e `message`.
  */
 class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
@@ -50,6 +52,11 @@ class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
                     result.success(null)
                 }
                 "downloadDir" -> result.success(downloadDir().absolutePath)
+                "enableBackgroundChecks" -> {
+                    UpdateCheckWorker.schedule(activity.applicationContext)
+                    requestNotificationPermission()
+                    result.success(null)
+                }
                 "install" -> {
                     val path = call.argument<String>("path")
                         ?: return result.error("argument", "Informe o caminho do APK", null)
@@ -71,8 +78,16 @@ class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
         } else {
             pm.getPackageInfo(activity.packageName, 0)
         }
-        val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pkg.longVersionCode else pkg.versionCode.toLong()
-        return mapOf("versionCode" to code, "versionName" to pkg.versionName)
+        return mapOf("versionCode" to UpdateCheckWorker.installedBuild(activity), "versionName" to pkg.versionName)
+    }
+
+    /** Android 13+: sem esta permissão, o aviso de versão nova não aparece como notificação. */
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
+        }
     }
 
     /** O usuário já permitiu que o ConectDroidCam instale apps? (Android 8+ exige.) */
@@ -165,5 +180,6 @@ class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
     private companion object {
         const val CHANNEL = "cdc/updater"
         const val ACTION_STATUS = "dev.eduardolima.conectdroidcam.UPDATE_STATUS"
+        const val REQUEST_NOTIFICATIONS = 4822
     }
 }

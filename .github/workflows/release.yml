@@ -124,7 +124,11 @@ jobs:
         working-directory: apps/conectdroidcam
         run: |
           flutter pub get
-          flutter build linux --release
+          # O app do computador compara este número com as releases para avisar de versão
+          # nova (é o mesmo N da release build-N).
+          flutter build linux --release \
+            --build-number=${{ github.run_number }} \
+            --dart-define=CDC_BUILD=${{ github.run_number }}
 
       - name: Chave de assinatura do repositório Flatpak
         env:

@@ -38,9 +38,15 @@ class _SenderPageState extends ConsumerState<SenderPage> {
     super.initState();
     // Depois do primeiro frame, para o pedido de permissão não competir com a montagem.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(senderControllerProvider.notifier).start();
+      final updater = ref.read(updateControllerProvider.notifier);
+      // A procura em segundo plano pede a permissão de notificação: só depois do fluxo da
+      // câmera, para os dois pedidos não aparecerem ao mesmo tempo.
+      ref
+          .read(senderControllerProvider.notifier)
+          .start()
+          .whenComplete(updater.enableBackgroundChecks);
       // Procura versão nova ao abrir; sem internet, simplesmente não aparece aviso.
-      ref.read(updateControllerProvider.notifier).check();
+      updater.check();
     });
   }
 

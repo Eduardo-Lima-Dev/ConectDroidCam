@@ -33,11 +33,11 @@ Map<String, Object?> release(
 };
 
 class FakeSource implements ReleaseSource {
-  ReleaseApk? next;
+  ReleaseAsset? next;
   Object? error;
 
   @override
-  Future<ReleaseApk?> latest() async {
+  Future<ReleaseAsset?> latest({String suffix = '.apk'}) async {
     if (error != null) throw error!;
     return next;
   }
@@ -70,6 +70,7 @@ class FakePlatform implements UpdaterPlatform {
   bool allowed = true;
   final List<String> installs = [];
   int settingsOpened = 0;
+  int backgroundEnabled = 0;
   final status = StreamController<(InstallStatus, String?)>.broadcast();
 
   @override
@@ -83,6 +84,8 @@ class FakePlatform implements UpdaterPlatform {
   @override
   Future<void> install(String path) async => installs.add(path);
   @override
+  Future<void> enableBackgroundChecks() async => backgroundEnabled++;
+  @override
   Stream<(InstallStatus, String?)> get installStatus => status.stream;
 }
 
@@ -95,7 +98,7 @@ void main() {
         release('build-7'),
       ]);
       expect(apk!.build, 9);
-      expect(apk.apkUrl, 'https://example.com/build-9.apk');
+      expect(apk.assetUrl, 'https://example.com/build-9.apk');
       expect(apk.size, 1000);
     });
 
@@ -131,10 +134,10 @@ void main() {
     UpdateState state() => container.read(updateControllerProvider);
     Future<void> tick() => Future<void>.delayed(Duration.zero);
 
-    const nova = ReleaseApk(
+    const nova = ReleaseAsset(
       build: 7,
       tag: 'build-7',
-      apkUrl: 'https://example.com/build-7.apk',
+      assetUrl: 'https://example.com/build-7.apk',
       size: 10,
       pageUrl: '',
     );
@@ -196,7 +199,7 @@ void main() {
       File('${dir.path}/ConectDroidCam-3.apk').writeAsStringSync('velho');
       await controller().check();
       await controller().download();
-      expect(downloader.urls, [nova.apkUrl]);
+      expect(downloader.urls, [nova.assetUrl]);
       expect(platform.installs, ['${dir.path}/ConectDroidCam-7.apk']);
       expect(File('${dir.path}/ConectDroidCam-3.apk').existsSync(), isFalse);
       expect(state().phase, UpdatePhase.installing);
@@ -249,6 +252,21 @@ void main() {
       expect(state().phase, UpdatePhase.ready);
       await controller().install();
       expect(platform.installs, hasLength(2));
+    });
+
+    test('liga a procura em segundo plano só no Android', () async {
+      await controller().enableBackgroundChecks();
+      expect(platform.backgroundEnabled, 1);
+
+      final c = ProviderContainer(
+        overrides: [
+          updaterEnabledProvider.overrideWithValue(false),
+          updaterPlatformProvider.overrideWithValue(platform),
+        ],
+      );
+      addTearDown(c.dispose);
+      await c.read(updateControllerProvider.notifier).enableBackgroundChecks();
+      expect(platform.backgroundEnabled, 1);
     });
 
     test('instalação concluída some com o aviso', () async {

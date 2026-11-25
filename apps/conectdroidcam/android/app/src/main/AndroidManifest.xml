@@ -7,6 +7,8 @@
     <!-- Para o atualizador do app: instala a versão nova baixada das releases do GitHub,
          sempre com a confirmação do usuário. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- Aviso de versão nova por notificação, mesmo com o app fechado (Android 13+ pede ao usuário). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <application

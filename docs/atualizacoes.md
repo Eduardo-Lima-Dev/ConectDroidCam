@@ -4,6 +4,10 @@ O ConectDroidCam se atualiza a partir das releases do próprio repositório, sem
 
 ## Linux (Flatpak)
 
+Quem atualiza é o Flatpak: pelo `flatpak update`, que atualiza todos os Flatpaks de uma vez, ou pela loja do sistema (GNOME Software, Discover).
+
+Ao abrir, o app instalado pelo Flatpak de uma release consulta as releases do GitHub. Se houver um `build-N` mais novo que o seu, mostra o aviso **Nova versão disponível** com o comando `flatpak update io.github.eduardo_lima_dev.ConectDroidCam` e um botão para copiá-lo. O número do build é embutido na compilação pelo CI (`--dart-define=CDC_BUILD=N`); builds locais ficam com 0 e não mostram o aviso.
+
 O repositório Flatpak publicado no GitHub Pages é assinado com uma chave GPG. O Flatpak recusa um repositório cuja assinatura não confere com a chave pública que o usuário cadastrou (está dentro do `.flatpakrepo`, do `.flatpakref` e do `.flatpak` das releases). A chave pública também está em [`flatpak/conectdroidcam-repo.gpg`](../flatpak/conectdroidcam-repo.gpg).
 
 ## Android
@@ -15,6 +19,8 @@ Ao abrir, o app consulta as releases do GitHub e compara o maior `build-N` que t
 3. O Android mostra a tela de confirmação da instalação.
 
 Sem internet, ou com o GitHub fora, o app simplesmente não mostra o aviso.
+
+Com o app fechado, o Android também procura versão nova a cada 6 horas (com internet), pelo WorkManager, e mostra a notificação **Nova versão do ConectDroidCam**. Tocar nela abre o app, onde está o botão **Atualizar**. Cada versão é avisada uma vez. No Android 13 ou mais novo, o app pede a permissão de notificação depois da permissão da câmera; sem ela, só o aviso dentro do app continua.
 
 O Android só atualiza um app se a versão nova tiver **a mesma assinatura** da instalada. Por isso:
 

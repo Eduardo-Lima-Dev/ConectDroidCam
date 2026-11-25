@@ -1,19 +1,20 @@
-/// Uma versão do app Android publicada nas releases do GitHub.
-class ReleaseApk {
-  const ReleaseApk({
+/// Um arquivo de uma versão publicada nas releases do GitHub: o APK do Android ou o
+/// `.flatpak` do Linux.
+class ReleaseAsset {
+  const ReleaseAsset({
     required this.build,
     required this.tag,
-    required this.apkUrl,
+    required this.assetUrl,
     required this.size,
     required this.pageUrl,
   });
 
-  /// Número do build (`versionCode` do Android). Vem da tag `build-N`.
+  /// Número do build. Vem da tag `build-N`; no Android é também o `versionCode`.
   final int build;
   final String tag;
-  final String apkUrl;
+  final String assetUrl;
 
-  /// Tamanho do APK em bytes, para conferir o download.
+  /// Tamanho do arquivo em bytes, para conferir o download.
   final int size;
 
   /// Página da release, com as notas.
@@ -21,11 +22,16 @@ class ReleaseApk {
 }
 
 /// Escolhe, entre as releases do GitHub (a resposta de `GET /repos/.../releases`), a mais
-/// nova que tenha um APK. Só valem as tags `build-N`, que o workflow cria a cada push na
-/// `main`; rascunhos e pré-lançamentos ficam de fora.
-ReleaseApk? latestApk(List<Object?> releases) {
+/// nova que tenha um APK.
+ReleaseAsset? latestApk(List<Object?> releases) =>
+    latestRelease(releases, suffix: '.apk');
+
+/// A release mais nova que tenha um arquivo terminado em [suffix]. Só valem as tags
+/// `build-N`, que o workflow cria a cada push na `main`; rascunhos e pré-lançamentos ficam de
+/// fora.
+ReleaseAsset? latestRelease(List<Object?> releases, {required String suffix}) {
   final tagRe = RegExp(r'^build-(\d+)$');
-  ReleaseApk? best;
+  ReleaseAsset? best;
   for (final item in releases.whereType<Map<String, Object?>>()) {
     if (item['draft'] == true || item['prerelease'] == true) continue;
     final tag = item['tag_name'];
@@ -37,17 +43,17 @@ ReleaseApk? latestApk(List<Object?> releases) {
     if (assets is! List) continue;
     final apk = assets.whereType<Map<String, Object?>>().where((a) {
       final name = a['name'];
-      return name is String && name.toLowerCase().endsWith('.apk');
+      return name is String && name.toLowerCase().endsWith(suffix);
     }).firstOrNull;
     if (apk == null) continue;
     final url = apk['browser_download_url'];
     final size = apk['size'];
     if (url is! String || size is! int) continue;
     if (best == null || build > best.build) {
-      best = ReleaseApk(
+      best = ReleaseAsset(
         build: build,
         tag: tag,
-        apkUrl: url,
+        assetUrl: url,
         size: size,
         pageUrl: item['html_url'] is String ? item['html_url']! as String : '',
       );
