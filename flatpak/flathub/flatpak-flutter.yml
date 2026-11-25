@@ -1,0 +1,75 @@
+# Template de manifesto para o Flathub (processado por `TheAppgineer/flatpak-flutter` via
+# `scripts/flatpak/preparar-flathub.sh`).
+#
+# Diferente do manifesto local (`flatpak/io.github.eduardo_lima_dev.ConectDroidCam.yml`),
+# este compila o Rust (`cdc-ffi`), o Flutter e o `ffmpeg` inteiramente a partir do código-fonte
+# público, sem acesso à rede durante o build.
+app-id: io.github.eduardo_lima_dev.ConectDroidCam
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: conectdroidcam
+finish-args:
+  # Rede: descoberta mDNS e conexão TCP criptografada com o celular.
+  - --share=network
+  # Interface gráfica.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Webcam virtual (/dev/videoN) e leitura de /sys/class/video4linux.
+  - --device=all
+
+modules:
+  # ffmpeg mínimo (LGPL): só decodifica H.264/MJPEG, escreve em v4l2 e gera a prévia JPEG.
+  - name: ffmpeg
+    buildsystem: simple
+    build-commands:
+      - >-
+        ./configure --prefix=/app --disable-everything --disable-doc --disable-debug
+        --disable-ffplay --disable-ffprobe --disable-network --disable-autodetect
+        --disable-x86asm --enable-ffmpeg --enable-avdevice --enable-avfilter
+        --enable-swscale --enable-outdev=v4l2 --enable-protocol=file,pipe
+        --enable-demuxer=h264 --enable-parser=h264,mjpeg --enable-decoder=h264,mjpeg
+        --enable-encoder=mjpeg,rawvideo --enable-muxer=image2pipe,null,rawvideo
+        --enable-filter=scale,transpose,pad,setsar,split,fps,null,format
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-9.1.tar.xz
+        sha256: 1a4d394ae63d190a526cd052eb4415c156b5c5e2df37efab41a7de0b8fde2433
+
+  - name: conectdroidcam
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/run/build/conectdroidcam/flutter/bin
+      env:
+        CARGO_HOME: /run/build/conectdroidcam/cargo
+        CARGO_NET_OFFLINE: 'true'
+        PUB_CACHE: /run/build/conectdroidcam/.pub-cache
+    build-commands:
+      - setup-flutter.sh
+      - cd apps/conectdroidcam && flutter pub get --offline
+      - cd apps/conectdroidcam && flutter build linux --release --no-pub
+      - mkdir -p /app/bin
+      - cp -r apps/conectdroidcam/build/linux/*/release/bundle/. /app/bin/
+      - install -Dm644 flatpak/io.github.eduardo_lima_dev.ConectDroidCam.desktop /app/share/applications/io.github.eduardo_lima_dev.ConectDroidCam.desktop
+      - install -Dm644 flatpak/io.github.eduardo_lima_dev.ConectDroidCam.metainfo.xml /app/share/metainfo/io.github.eduardo_lima_dev.ConectDroidCam.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/io.github.eduardo_lima_dev.ConectDroidCam/LICENSE
+      - install -Dm755 scripts/setup/linux-webcam-virtual.sh /app/share/conectdroidcam/linux-webcam-virtual.sh
+      - >-
+        for sz in 16 22 24 32 48 64 128 256 512; do
+          install -Dm644 "packaging/linux/icons/hicolor/${sz}x${sz}/apps/io.github.eduardo_lima_dev.ConectDroidCam.png" \
+            "/app/share/icons/hicolor/${sz}x${sz}/apps/io.github.eduardo_lima_dev.ConectDroidCam.png";
+        done
+    sources:
+      - type: git
+        url: https://github.com/Eduardo-Lima-Dev/ConectDroidCam.git
+        tag: __TAG__
+        commit: __COMMIT__
+      - type: git
+        url: https://github.com/flutter/flutter.git
+        tag: 3.44.4
+        dest: flutter
