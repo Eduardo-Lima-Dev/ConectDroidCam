@@ -37,7 +37,7 @@ class UpdateState {
   });
 
   final UpdatePhase phase;
-  final ReleaseApk? release;
+  final ReleaseAsset? release;
   final int installedBuild;
 
   /// Progresso do download, de 0 a 1.
@@ -48,7 +48,7 @@ class UpdateState {
 
   UpdateState copyWith({
     UpdatePhase? phase,
-    ReleaseApk? release,
+    ReleaseAsset? release,
     int? installedBuild,
     double? progress,
     String? Function()? message,
@@ -144,7 +144,7 @@ class UpdateController extends Notifier<UpdateState> {
       await ref
           .read(updateDownloaderProvider)
           .download(
-            release.apkUrl,
+            release.assetUrl,
             path,
             expectedSize: release.size,
             onProgress: (p) => state = state.copyWith(progress: p),
@@ -178,6 +178,15 @@ class UpdateController extends Notifier<UpdateState> {
         message: () => 'Não consegui abrir a instalação: $e',
       );
     }
+  }
+
+  /// Liga o aviso de versão nova por notificação, mesmo com o app fechado. Uma falha aqui não
+  /// atrapalha nada: o aviso dentro do app continua funcionando.
+  Future<void> enableBackgroundChecks() async {
+    if (!ref.read(updaterEnabledProvider)) return;
+    try {
+      await _platform.enableBackgroundChecks();
+    } on Object catch (_) {}
   }
 
   /// Leva às configurações do Android para permitir que o ConectDroidCam instale apps.

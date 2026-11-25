@@ -7,8 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/widgets/brand_logo.dart';
 import '../application/receiver_controller.dart';
 import '../domain/receiver_models.dart';
+import '../../update/application/desktop_update_controller.dart';
+import '../../update/presentation/desktop_update_banner.dart';
 
-/// Tela do computador: acha o celular na rede, conecta e manda a imagem à webcam virtual.
 class ReceiverPage extends ConsumerStatefulWidget {
   const ReceiverPage({super.key});
 
@@ -22,6 +23,7 @@ class _ReceiverPageState extends ConsumerState<ReceiverPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(receiverControllerProvider.notifier).start();
+      ref.read(desktopUpdateProvider.notifier).check();
     });
   }
 
@@ -141,6 +143,7 @@ class _Content extends ConsumerWidget {
           _PairingCard(state: state),
           const SizedBox(height: 16),
         ],
+        const DesktopUpdateBanner(),
         _StatusBar(state: state),
         const SizedBox(height: 16),
         _PhoneCard(state: state),
@@ -239,7 +242,6 @@ class _PhoneCard extends ConsumerWidget {
   }
 }
 
-/// Lista os celulares achados e deixa digitar um endereço.
 class _Finder extends ConsumerStatefulWidget {
   const _Finder({required this.state});
 
@@ -360,7 +362,6 @@ class _FinderState extends ConsumerState<_Finder> {
   }
 }
 
-/// Mostra o código de pareamento para o usuário conferir com o do celular.
 class _PairingCard extends ConsumerWidget {
   const _PairingCard({required this.state});
 
@@ -496,7 +497,6 @@ class _Connected extends ConsumerWidget {
   }
 }
 
-/// Comanda o celular daqui: resolução, FPS, iniciar e parar, e trocar de câmera.
 class _PhoneControls extends ConsumerWidget {
   const _PhoneControls({required this.state});
 
@@ -756,7 +756,6 @@ class _OutputCard extends ConsumerWidget {
   }
 }
 
-/// Faixa no topo com o que está acontecendo, em palavras simples.
 class _StatusBar extends StatelessWidget {
   const _StatusBar({required this.state});
 
@@ -809,7 +808,6 @@ class _StatusBar extends StatelessWidget {
   }
 }
 
-/// A prévia da câmera do celular, já girada para ficar em pé.
 class _PreviewBox extends ConsumerWidget {
   const _PreviewBox({required this.state});
 
@@ -817,42 +815,45 @@ class _PreviewBox extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Só este widget reconstrói a cada quadro.
     final frame = ref.watch(previewFrameProvider);
     final out = state.outgoing;
     final ratio = out == null || out.height == 0
         ? 16 / 9
         : out.width / out.height;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: AspectRatio(
-        aspectRatio: ratio,
-        child: ColoredBox(
-          color: Colors.black,
-          child: frame == null
-              ? const Center(
-                  child: Text(
-                    'Aguardando a imagem do celular…',
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                )
-              : Image.memory(
-                  frame,
-                  fit: BoxFit.contain,
-                  // Sem isto a imagem pisca a cada quadro novo.
-                  gaplessPlayback: true,
-                  filterQuality: FilterQuality.medium,
-                ),
+    final maxHeight = previewMaxHeight(MediaQuery.sizeOf(context).height);
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: AspectRatio(
+          aspectRatio: ratio,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: ColoredBox(
+              color: Colors.black,
+              child: frame == null
+                  ? const Center(
+                      child: Text(
+                        'Aguardando a imagem do celular…',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    )
+                  : Image.memory(
+                      frame,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                      filterQuality: FilterQuality.medium,
+                    ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-/// Comando para criar as webcams virtuais no host Linux.
-///
-/// Dentro do Flatpak, aponta para o script empacotado junto do aplicativo, já que
-/// o usuário final não tem o repositório clonado.
+double previewMaxHeight(double windowHeight) =>
+    (windowHeight * 0.5).clamp(180.0, double.infinity);
+
 String virtualWebcamSetupCommand({Map<String, String>? environment}) {
   final env = environment ?? Platform.environment;
   final flatpakId = env['FLATPAK_ID'];
@@ -863,7 +864,6 @@ String virtualWebcamSetupCommand({Map<String, String>? environment}) {
   return 'sudo scripts/setup/linux-webcam-virtual.sh';
 }
 
-/// "ConectDroidCam FHD Vertical (/dev/video11)", ou só o caminho se o nome não for conhecido.
 String _deviceLabel(ReceiverState state, String path) {
   for (final d in state.devices) {
     if (d.path == path) return d.label;

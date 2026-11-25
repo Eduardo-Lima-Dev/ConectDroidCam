@@ -404,6 +404,44 @@ void main() {
       expect(find.text('Conectando a Pixel…'), findsOneWidget);
     }, variant: linux);
 
+    testWidgets(
+      'a prévia vertical cabe em metade da janela, sem empurrar os controles',
+      (tester) async {
+        final platform = await pumpReceiver(tester);
+        // Depois do pumpReceiver, que define a janela padrão dos testes (1280×1600).
+        tester.view.physicalSize = const Size(900, 1000);
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('endereco')),
+          '192.168.0.9:47821',
+        );
+        await tester.tap(find.widgetWithText(OutlinedButton, 'Conectar'));
+        await tester.pumpAndSettle();
+        platform.send(
+          const OutputUpdate(
+            OutgoingVideo(width: 1080, height: 1920, rotation: 90),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final box = tester.getSize(
+          find.ancestor(
+            of: find.text('Aguardando a imagem do celular…'),
+            matching: find.byType(AspectRatio),
+          ),
+        );
+        expect(box.height, lessThanOrEqualTo(500));
+        // Continua na proporção da saída, só menor.
+        expect(box.width / box.height, closeTo(1080 / 1920, 0.01));
+      },
+      variant: linux,
+    );
+
+    test('o limite da prévia é metade da janela, com um mínimo legível', () {
+      expect(previewMaxHeight(1000), 500);
+      expect(previewMaxHeight(200), 180);
+    });
+
     testWidgets('mostra a prévia quando o celular manda quadros', (
       tester,
     ) async {

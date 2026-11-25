@@ -8,8 +8,8 @@ import '../domain/update_models.dart';
 
 /// Onde o app procura versões novas.
 abstract interface class ReleaseSource {
-  /// A versão mais nova publicada, ou `null` se não há nenhuma com APK.
-  Future<ReleaseApk?> latest();
+  /// A versão mais nova publicada com um arquivo terminado em [suffix], ou `null`.
+  Future<ReleaseAsset?> latest({String suffix = '.apk'});
 }
 
 /// Releases públicas do repositório no GitHub.
@@ -24,7 +24,7 @@ class GitHubReleaseSource implements ReleaseSource {
   final HttpClient Function() _client;
 
   @override
-  Future<ReleaseApk?> latest() async {
+  Future<ReleaseAsset?> latest({String suffix = '.apk'}) async {
     final client = _client()..connectionTimeout = const Duration(seconds: 10);
     try {
       final request = await client.getUrl(_url);
@@ -39,7 +39,7 @@ class GitHubReleaseSource implements ReleaseSource {
       }
       final body = await response.transform(utf8.decoder).join();
       final json = jsonDecode(body);
-      return json is List ? latestApk(json) : null;
+      return json is List ? latestRelease(json, suffix: suffix) : null;
     } finally {
       client.close(force: true);
     }
@@ -103,6 +103,10 @@ abstract interface class UpdaterPlatform {
   Future<void> openInstallSettings();
   Future<String> downloadDir();
   Future<void> install(String path);
+
+  /// Agenda a procura de versão nova em segundo plano (com notificação) e, no Android 13+,
+  /// pede a permissão de notificação.
+  Future<void> enableBackgroundChecks();
   Stream<(InstallStatus, String?)> get installStatus;
 }
 
@@ -147,6 +151,10 @@ class ChannelUpdaterPlatform implements UpdaterPlatform {
   @override
   Future<void> install(String path) =>
       _channel.invokeMethod<void>('install', {'path': path});
+
+  @override
+  Future<void> enableBackgroundChecks() =>
+      _channel.invokeMethod<void>('enableBackgroundChecks');
 
   @override
   Stream<(InstallStatus, String?)> get installStatus => _status.stream;

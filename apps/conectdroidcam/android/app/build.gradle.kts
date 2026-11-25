@@ -73,3 +73,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Procura de versão nova em segundo plano (UpdateCheckWorker).
+    implementation("androidx.work:work-runtime:2.10.1")
+}
