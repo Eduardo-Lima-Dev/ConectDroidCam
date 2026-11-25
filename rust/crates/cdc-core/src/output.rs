@@ -181,7 +181,7 @@ impl Output {
             // H.264 cru em pipe: sem limitar a sondagem, o ffmpeg espera bytes demais (ou o
             // fim da entrada) antes de abrir a saída. O fluxo já começa em SPS/PPS.
             .args(["-probesize", "100000", "-analyzeduration", "0"])
-            .args(["-f", "h264", "-framerate", "30", "-i", "-"]);
+            .args(["-f", "h264", "-framerate", "30", "-i", "pipe:0"]);
         // Um grafo só: a imagem girada vai à webcam virtual (`[a]`) e, reduzida, à prévia (`[p]`).
         let base = filter.clone().unwrap_or_else(|| "null".into());
         let reduzir = format!("fps={PREVIEW_FPS},scale={PREVIEW_WIDTH}:-2");
