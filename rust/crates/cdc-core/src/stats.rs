@@ -1,11 +1,7 @@
-//! Medições de uma sessão.
-
 use std::collections::VecDeque;
 
-/// Resultado de uma sessão, para conferência.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Report {
-    /// Largura, altura e FPS que o emissor disse estar entregando.
     pub actual: Option<(u32, u32, u32)>,
     pub video_frames: u64,
     pub keyframes: u64,
@@ -13,18 +9,13 @@ pub struct Report {
     pub seconds: f64,
     pub avg_fps: f64,
     pub avg_kbps: f64,
-    /// Maior intervalo entre dois frames de vídeo consecutivos, em ms.
     pub max_gap_ms: f64,
-    /// Atraso dos frames de vídeo além do melhor caso observado: quanto cada frame chegou
-    /// depois do que o relógio de captura (`pts`) previa. Mede o que a rede (ou o emissor)
-    /// atrasa; não inclui captura, codificação nem exibição.
     pub lag_p50_ms: f64,
     pub lag_p95_ms: f64,
     pub lag_max_ms: f64,
     pub received_config: bool,
 }
 
-/// Percentil pelo método do posto mais próximo, sobre valores já ordenados.
 pub fn percentile(ordenados: &[f64], p: f64) -> f64 {
     if ordenados.is_empty() {
         return 0.0;
@@ -33,11 +24,8 @@ pub fn percentile(ordenados: &[f64], p: f64) -> f64 {
     ordenados[posto.clamp(1, ordenados.len()) - 1]
 }
 
-/// Quantas amostras de atraso guardar: cerca de 11 minutos a 30 FPS. Passado disso as mais
-/// antigas saem, para uma sessão longa não crescer sem limite.
 const MAX_LAG_SAMPLES: usize = 20_000;
 
-/// Acompanha o atraso dos frames em relação ao relógio de captura.
 #[derive(Debug, Default)]
 pub struct LagTracker {
     origin: Option<(std::time::Instant, u64)>,
@@ -47,7 +35,6 @@ pub struct LagTracker {
 }
 
 impl LagTracker {
-    /// Registra a chegada de um frame com o `pts` dado (em µs).
     pub fn record(&mut self, now: std::time::Instant, pts_us: u64) {
         let (inicio, pts0) = *self.origin.get_or_insert((now, pts_us));
         let chegada_ms = now.duration_since(inicio).as_secs_f64() * 1000.0;
@@ -63,13 +50,10 @@ impl LagTracker {
         self.window_max = self.window_max.max(bruto - self.best);
     }
 
-    /// Maior atraso desde a última chamada, e zera a janela.
     pub fn take_window_max(&mut self) -> f64 {
         std::mem::take(&mut self.window_max)
     }
 
-    /// Preenche p50, p95 e máximo do relatório. O que sobra depois de descontar o melhor
-    /// caso é atraso causado pela rede, não pelo relógio.
     pub fn fill(&self, report: &mut Report) {
         let Some(melhor) = self.samples.iter().copied().reduce(f64::min) else {
             return;
@@ -110,7 +94,6 @@ mod tests {
     fn atraso_e_medido_contra_o_melhor_caso() {
         let t0 = Instant::now();
         let mut lag = LagTracker::default();
-        // Dois frames pontuais e um que chega 80 ms depois do previsto.
         lag.record(t0, 0);
         lag.record(t0 + Duration::from_millis(33), 33_000);
         lag.record(t0 + Duration::from_millis(146), 66_000);

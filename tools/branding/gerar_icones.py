@@ -40,18 +40,15 @@ DENSIDADES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
 
 gerados: list[Path] = []
 
-
 def salvar(img: Image.Image, destino: Path) -> None:
     destino.parent.mkdir(parents=True, exist_ok=True)
     img.save(destino, optimize=True)
     gerados.append(destino)
 
-
 def escrever(destino: Path, texto: str) -> None:
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(texto, encoding="utf-8")
     gerados.append(destino)
-
 
 def carregar() -> Image.Image:
     """Abre a logo e recorta a margem transparente, deixando-a quadrada."""
@@ -65,10 +62,8 @@ def carregar() -> Image.Image:
     quadrada.paste(img, ((lado - img.width) // 2, (lado - img.height) // 2))
     return quadrada
 
-
 def redimensionar(img: Image.Image, lado: int) -> Image.Image:
     return img.resize((lado, lado), LANCZOS)
-
 
 def cor_de_fundo(img: Image.Image) -> tuple[int, int, int]:
     """Azul-marinho médio de regiões do fundo sem desenho, perto dos cantos."""
@@ -80,7 +75,6 @@ def cor_de_fundo(img: Image.Image) -> tuple[int, int, int]:
                 pontos.append(img.getpixel((int(n * ox) + dx * 6, int(n * oy) + dy * 6)))
     return tuple(round(statistics.mean(p[i] for p in pontos)) for i in range(3))  # type: ignore[return-value]
 
-
 def cor_verde(img: Image.Image) -> tuple[int, int, int]:
     """Verde do anel: mediana dos pixels bem verdes."""
     dados = img.convert("RGBA").resize((300, 300), LANCZOS).tobytes()
@@ -88,10 +82,8 @@ def cor_verde(img: Image.Image) -> tuple[int, int, int]:
     px = [p for p in todos if p[3] > 250 and p[1] > 190 and p[0] < 140 and p[2] < 60]
     return tuple(round(statistics.median(p[i] for p in px)) for i in range(3))  # type: ignore[return-value]
 
-
 def hexa(cor: tuple[int, int, int]) -> str:
     return "#%02X%02X%02X" % cor
-
 
 def achatar(img: Image.Image, fundo: tuple[int, int, int]) -> Image.Image:
     """Cola a logo sobre um fundo opaco (a Apple não aceita transparência no ícone)."""
@@ -99,14 +91,12 @@ def achatar(img: Image.Image, fundo: tuple[int, int, int]) -> Image.Image:
     base.paste(img, mask=img.getchannel("A"))
     return base
 
-
 def com_margem(img: Image.Image, canvas: int, fracao: float) -> Image.Image:
     """Centraliza a logo num canvas transparente, ocupando `fracao` dele."""
     lado = round(canvas * fracao)
     saida = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
     saida.paste(redimensionar(img, lado), ((canvas - lado) // 2, (canvas - lado) // 2), redimensionar(img, lado))
     return saida
-
 
 def silhueta(logo: Image.Image, lado: int = 800) -> Image.Image:
     """Forma branca da logo, em tons de cinza: só os traços claros (branco e verde do
@@ -122,11 +112,9 @@ def silhueta(logo: Image.Image, lado: int = 800) -> Image.Image:
         return banda.point(lambda v: 255 if lo <= v <= hi else 0)
 
     branco = ImageChops.multiply(ImageChops.multiply(acima(r, 185), acima(g, 185)), acima(b, 185))
-    # O degradê verde da tela do celular tem azul mais alto que o anel; o filtro o exclui.
     verde = ImageChops.multiply(ImageChops.multiply(acima(g, 200), entre(r, 60, 190)), entre(b, 0, 60))
     forma = ImageChops.lighter(branco, verde)
 
-    # Ignora a borda e o brilho do quadrado arredondado.
     interior = Image.new("L", (lado, lado), 0)
     margem = round(lado * 0.07)
     ImageDraw.Draw(interior).rounded_rectangle(
@@ -134,11 +122,9 @@ def silhueta(logo: Image.Image, lado: int = 800) -> Image.Image:
     )
     return ImageChops.multiply(forma, interior)
 
-
 def recortar_forma(forma: Image.Image) -> Image.Image:
     caixa = forma.point(lambda v: 255 if v > 8 else 0).getbbox()
     return forma.crop(caixa) if caixa else forma
-
 
 def so_webcam(forma: Image.Image) -> Image.Image:
     """Recorta da silhueta só a webcam com os raios, no alto da logo. A logo inteira
@@ -146,14 +132,12 @@ def so_webcam(forma: Image.Image) -> Image.Image:
     n = forma.width
     return forma.crop((round(n * 0.40), round(n * 0.02), round(n * 0.60), round(n * 0.32)))
 
-
 def glifo_branco(forma: Image.Image, canvas: int, ocupa: float, engrossar: int = 0) -> Image.Image:
     """Silhueta branca sobre transparente, centralizada e ocupando `ocupa` do canvas."""
     forma = recortar_forma(forma)
     maior = max(forma.size)
     alvo = round(canvas * ocupa)
     escala = alvo / maior
-    # Engrossa antes de reduzir, senão os traços finos somem em ícones pequenos.
     grande = forma.resize((round(forma.width * escala * 4), round(forma.height * escala * 4)), LANCZOS)
     for _ in range(engrossar):
         grande = grande.filter(ImageFilter.MaxFilter(5))
@@ -164,24 +148,15 @@ def glifo_branco(forma: Image.Image, canvas: int, ocupa: float, engrossar: int =
     saida.putalpha(alfa)
     return saida
 
-
-# --------------------------------------------------------------------------- Android
-
-
 def gerar_android(logo: Image.Image, fundo: tuple[int, int, int], forma: Image.Image) -> None:
     for nome, esc in DENSIDADES.items():
-        # Ícone clássico (Android antes do 8 e lançadores que não usam o adaptativo).
         salvar(redimensionar(logo, round(48 * esc)), RES / f"mipmap-{nome}" / "ic_launcher.png")
 
-        # Adaptativo: tela de 108 dp, mas só os 72 dp centrais aparecem de forma garantida,
-        # e uma máscara circular corta ainda mais. A logo cabe nessa zona segura.
         lado = round(108 * esc)
         salvar(com_margem(logo, lado, 0.66), RES / f"mipmap-{nome}" / "ic_launcher_foreground.png")
         salvar(glifo_branco(forma, lado, 0.50, engrossar=1), RES / f"mipmap-{nome}" / "ic_launcher_monochrome.png")
 
-        # Notificação: 24 dp, branco sobre transparente, como o Android exige.
         px_notif = round(24 * esc)
-        # Em telas pequenas o traço já sai grosso demais: engrossa menos.
         salvar(
             glifo_branco(so_webcam(forma), px_notif, 0.90, engrossar=2 if px_notif >= 48 else 1),
             RES / f"drawable-{nome}" / "ic_stat_cdc.png",
@@ -226,7 +201,6 @@ def gerar_android(logo: Image.Image, fundo: tuple[int, int, int], forma: Image.I
     escrever(RES / "drawable" / "launch_background.xml", abertura)
     escrever(RES / "drawable-v21" / "launch_background.xml", abertura)
 
-    # Android 12 em diante desenha a abertura sozinho (ícone do app sobre uma cor).
     for qualificador, pai in [("values-v31", "Light"), ("values-night-v31", "Black")]:
         escrever(
             RES / qualificador / "styles.xml",
@@ -240,10 +214,6 @@ def gerar_android(logo: Image.Image, fundo: tuple[int, int, int], forma: Image.I
 """,
         )
 
-
-# --------------------------------------------------------------------------- iOS
-
-
 def gerar_ios(logo: Image.Image, fundo: tuple[int, int, int]) -> None:
     pasta = APP / "ios" / "Runner" / "Assets.xcassets" / "AppIcon.appiconset"
     contents = json.loads((pasta / "Contents.json").read_text(encoding="utf-8"))
@@ -254,24 +224,14 @@ def gerar_ios(logo: Image.Image, fundo: tuple[int, int, int]) -> None:
         px = round(lado_pt * escala)
         salvar(base.resize((px, px), LANCZOS), pasta / item["filename"])
 
-    # LaunchImage: a logo no centro (o fundo vem do storyboard).
     lancamento = APP / "ios" / "Runner" / "Assets.xcassets" / "LaunchImage.imageset"
     for arquivo, px in [("LaunchImage.png", 128), ("LaunchImage@2x.png", 256), ("LaunchImage@3x.png", 384)]:
         salvar(redimensionar(logo, px), lancamento / arquivo)
 
-
-# --------------------------------------------------------------------------- macOS
-
-
 def gerar_macos(logo: Image.Image) -> None:
     pasta = APP / "macos" / "Runner" / "Assets.xcassets" / "AppIcon.appiconset"
-    # O macOS não aplica máscara: o ícone traz a própria forma, com cerca de 10% de margem.
     for px in (16, 32, 64, 128, 256, 512, 1024):
         salvar(com_margem(logo, px, 0.82), pasta / f"app_icon_{px}.png")
-
-
-# --------------------------------------------------------------------------- Linux e app
-
 
 def gerar_linux(logo: Image.Image) -> None:
     base = RAIZ / "packaging" / "linux" / "icons" / "hicolor"
@@ -296,16 +256,10 @@ StartupWMClass={ID_APP}
     escrever(RAIZ / "packaging" / "linux" / f"{ID_APP}.desktop", desktop)
     escrever(RAIZ / "flatpak" / f"{ID_APP}.desktop", desktop)
 
-
 def gerar_flutter(logo: Image.Image) -> None:
     pasta = APP / "assets" / "branding"
     salvar(redimensionar(logo, 512), pasta / "logo.png")
-    # Ícone da janela no Linux (carregado pelo runner GTK).
     salvar(redimensionar(logo, 256), pasta / "app_icon.png")
-
-
-# --------------------------------------------------------------------------- prévia
-
 
 def previa(logo: Image.Image, fundo: tuple[int, int, int], forma: Image.Image, destino: Path) -> None:
     """Folha de contato para conferir os ícones a olho, com as máscaras do Android."""
@@ -324,7 +278,6 @@ def previa(logo: Image.Image, fundo: tuple[int, int, int], forma: Image.Image, d
         saida.paste(img, mask=m)
         return saida
 
-    # O Android mostra só a janela central de 72 dp, de uma tela de 108 dp.
     adaptativo = Image.new("RGBA", (432, 432), fundo + (255,))
     adaptativo.alpha_composite(com_margem(logo, 432, 0.66))
     janela = adaptativo.crop((72, 72, 360, 360))
@@ -339,7 +292,6 @@ def previa(logo: Image.Image, fundo: tuple[int, int, int], forma: Image.Image, d
     itens.append(("iOS (sem alfa)", mascarar(redimensionar(achatar(logo, fundo).convert("RGBA"), celula), "quadrado")))
     itens.append(("macOS", redimensionar(com_margem(logo, 1024, 0.82), celula)))
 
-    # Notificação: tamanhos reais, ampliados sem suavizar, sobre a barra escura do Android.
     for dp in (24,):
         for esc in (1, 2, 4):
             g = glifo_branco(so_webcam(forma), dp * esc, 0.90, engrossar=2)
@@ -359,7 +311,6 @@ def previa(logo: Image.Image, fundo: tuple[int, int, int], forma: Image.Image, d
     destino.parent.mkdir(parents=True, exist_ok=True)
     folha.convert("RGB").save(destino)
     print(f"prévia: {destino}")
-
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -387,7 +338,6 @@ def main() -> None:
     gerar_linux(logo)
     gerar_flutter(logo)
     print(f"{len(gerados)} arquivos gerados")
-
 
 if __name__ == "__main__":
     main()

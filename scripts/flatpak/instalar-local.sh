@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# Gera o bundle de release do app Linux, monta o Flatpak e instala para o usuário atual.
-# Não usa sudo: o Flatpak fica em ~/.local/share/flatpak.
-#
-# Uso: scripts/flatpak/instalar-local.sh [--sem-build-flutter]
-#   --sem-build-flutter  usa o bundle de release que já existe, sem recompilar o Flutter.
 set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -22,7 +17,6 @@ if ! flatpak info --user org.gnome.Platform//51 >/dev/null 2>&1 \
   exit 1
 fi
 
-# O flatpak-builder roda pelo próprio Flatpak (org.flatpak.Builder), sem instalar nada no sistema.
 flatpak run org.flatpak.Builder \
   --user --install --force-clean --disable-rofiles-fuse \
   --state-dir="$RAIZ/dist/flatpak-state" \

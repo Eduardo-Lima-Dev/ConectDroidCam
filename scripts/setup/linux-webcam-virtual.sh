@@ -1,29 +1,4 @@
 #!/usr/bin/env bash
-# Cria as webcams virtuais do ConectDroidCam: uma por tamanho e formato.
-#
-# Por que várias: o OBS nunca fecha uma webcam que abriu, e a webcam não muda de tamanho com
-# ele aberto. Se houvesse uma só, trocar de tamanho, formato ou posição do celular deixaria a
-# imagem embaralhada até reabrir a fonte no OBS. Com uma por tamanho e formato, nenhuma muda de
-# tamanho nunca, e o app escolhe sozinho a certa.
-#
-#   /dev/video10  ConectDroidCam FHD Horizontal  1920x1080
-#   /dev/video11  ConectDroidCam FHD Vertical   1080x1920
-#   /dev/video12  ConectDroidCam HD Horizontal   1280x720
-#   /dev/video13  ConectDroidCam HD Vertical     720x1280
-#   /dev/video14  ConectDroidCam 2K Horizontal   2560x1440
-#   /dev/video15  ConectDroidCam 2K Vertical     1440x2560
-#   /dev/video0   dispositivo genérico, como antes (sem nome nem exclusive_caps)
-#
-# (O nome da câmera tem no máximo 31 caracteres, por isso "FHD".)
-#
-# Precisa de root, porque configura o módulo `v4l2loopback` do kernel. Sem mexer no que você já
-# tem: escreve um arquivo novo em /etc/modprobe.d, não toca no módulo `v4l2loopback_dc` do
-# Droidcam, e só recarrega o módulo se ninguém o estiver usando (feche o OBS antes).
-#
-# Uso:
-#   sudo scripts/setup/linux-webcam-virtual.sh              cria e ativa
-#   sudo scripts/setup/linux-webcam-virtual.sh --remover    desfaz
-#   scripts/setup/linux-webcam-virtual.sh --simular         só mostra o que faria, sem root
 set -euo pipefail
 
 CONF=/etc/modprobe.d/conectdroidcam.conf
@@ -38,7 +13,6 @@ esac
 
 NOMES="ConectDroidCam FHD Horizontal,ConectDroidCam FHD Vertical,ConectDroidCam HD Horizontal,ConectDroidCam HD Vertical,ConectDroidCam 2K Horizontal,ConectDroidCam 2K Vertical"
 CONTEUDO="# ConectDroidCam: uma webcam virtual por tamanho e formato (criado por scripts/setup/linux-webcam-virtual.sh).
-# /dev/video10 a /dev/video15: as do ConectDroidCam. /dev/video0: genérico, como antes.
 options v4l2loopback devices=7 video_nr=10,11,12,13,14,15,0 card_label=\"${NOMES}\" exclusive_caps=1,1,1,1,1,1,0
 "
 
@@ -50,7 +24,6 @@ if [ "$MODO" != "simular" ] && [ "$(id -u)" -ne 0 ]; then
 fi
 
 modulo_em_uso() {
-  # Quantos programas seguram o módulo (coluna "Used by" do lsmod).
   lsmod | awk '$1=="v4l2loopback"{print $3}'
 }
 

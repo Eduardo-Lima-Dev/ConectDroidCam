@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:conectdroidcam/features/sender/data/sender_platform.dart';
 import 'package:conectdroidcam/features/sender/domain/sender_models.dart';
 
-/// Emissor nativo de mentira, para testar o controlador sem câmera.
 class FakeSenderPlatform implements SenderPlatform {
   bool permissionGranted = false;
   bool grantOnRequest = true;
@@ -25,8 +24,6 @@ class FakeSenderPlatform implements SenderPlatform {
   final List<String> unpaired = [];
   List<PairedComputer> paired = [];
 
-  /// Um aparelho parecido com o de teste: HD e Full HD ok, 2K indisponível,
-  /// e duas resoluções extras (uma que só chega a 20 FPS).
   SenderCapabilities capabilities = const SenderCapabilities(
     fpsOptions: [15, 20, 30],
     modes: [

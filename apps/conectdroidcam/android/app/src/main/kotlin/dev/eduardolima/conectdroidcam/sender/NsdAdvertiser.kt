@@ -6,26 +6,13 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 
-/**
- * Anuncia o servidor na rede local por mDNS (`_conectdroidcam._tcp`), para o computador
- * achar o celular sem digitar o endereço. O nome real pode mudar se já houver outro igual.
- */
 class NsdAdvertiser(context: Context) {
     private val manager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
 
-    /**
-     * Com o Wi-Fi em economia de energia o Android descarta pacotes multicast, e o celular
-     * deixa de responder às consultas mDNS do computador por vários segundos. Segurar este
-     * lock enquanto transmite evita isso.
-     */
     private var multicastLock: WifiManager.MulticastLock? = null
     private var listener: NsdManager.RegistrationListener? = null
 
-    /**
-     * [onResult] recebe o nome anunciado, ou `null` e a mensagem de erro se falhou. Os
-     * callbacks chegam numa thread do sistema.
-     */
     fun start(port: Int, version: String, onResult: (name: String?, error: String?) -> Unit) {
         stop()
         multicastLock = runCatching {
@@ -65,7 +52,6 @@ class NsdAdvertiser(context: Context) {
         multicastLock = null
         val current = listener ?: return
         listener = null
-        // Lança se o registro ainda não terminou ou já foi desfeito; nos dois casos não há o que fazer.
         runCatching { manager.unregisterService(current) }
     }
 

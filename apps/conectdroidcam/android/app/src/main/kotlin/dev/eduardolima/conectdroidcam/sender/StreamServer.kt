@@ -14,20 +14,6 @@ import javax.net.ssl.SSLSocket
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicLong
 
-/**
- * Servidor do protocolo v1. O celular escuta e o computador conecta; assim o mesmo
- * fluxo serve Wi-Fi e USB (`adb forward`).
- *
- * Aceita um cliente por vez. Sem cliente, os frames do codificador são descartados.
- * Com cliente, a fila de vídeo tem limite: se o cliente não acompanha, descarta o que
- * está na fila e só volta a enviar a partir do próximo keyframe (latência acima de
- * completude, como em docs/protocol-v1.md).
- *
- * Toda conexão é TLS 1.2/1.3 com o certificado do celular, e o computador também apresenta o
- * dele. Só um computador **pareado** (cuja impressão digital está em [PhoneSecurity.store])
- * recebe vídeo ou é obedecido. Um computador novo só pode pedir pareamento: os dois lados
- * mostram o mesmo código de 6 dígitos, o usuário confere e confirma nas duas telas.
- */
 class StreamServer(
     private val port: Int,
     private val appVersion: String,
@@ -39,19 +25,12 @@ class StreamServer(
 
         fun onClientDisconnected()
 
-        /** O cliente pediu, ou o descarte exige, um novo IDR. */
         fun onKeyframeNeeded()
 
-        /**
-         * O computador mandou um comando (`stream.start`, `stream.stop`, `fps.set` ou
-         * `camera.switch`). Chega na thread de leitura; quem trata volta à thread principal.
-         */
         fun onCommand(type: String, message: JSONObject)
 
-        /** Um computador novo pediu pareamento: o usuário precisa comparar [code] com o dele. */
         fun onPairingRequest(code: String, computerName: String)
 
-        /** O pareamento terminou (deu certo, foi recusado ou expirou). */
         fun onPairingEnded(paired: Boolean, computerName: String, reason: String?)
     }
 
@@ -69,11 +48,9 @@ class StreamServer(
     @Volatile private var videoConfig: ByteArray? = null
     @Volatile private var profiles: List<Map<String, Any?>> = emptyList()
 
-    /** Última descrição do que o celular sabe fazer; reenviada a cada cliente novo. */
     @Volatile private var capabilities: Protocol.Frame? = null
     private var basePtsUs = -1L
 
-    /** [rotation]: graus, no sentido horário, que o quadro precisa girar para ficar em pé. */
     private data class StreamInfo(
         val width: Int,
         val height: Int,
@@ -86,24 +63,20 @@ class StreamServer(
         info = StreamInfo(width, height, fps, bitrateKbps, rotation)
         videoConfig = null
         basePtsUs = -1L
-        // Um cliente já conectado precisa saber o novo tamanho antes do primeiro quadro.
         client?.enqueueControl(profileActualFrame())
     }
 
-    /** A transmissão parou, mas o servidor e a conexão continuam. */
     fun clearStream() {
         info = StreamInfo(0, 0, 0, 0, 0)
         videoConfig = null
         basePtsUs = -1L
     }
 
-    /** Informa ao cliente o que o celular sabe fazer e em que estado está. */
     fun setCapabilities(frame: Protocol.Frame) {
         capabilities = frame
         client?.enqueueControl(frame)
     }
 
-    /** Responde a um comando que não pôde ser executado. */
     fun sendError(message: String) {
         client?.enqueueControl(
             Protocol.control("error") {
@@ -113,13 +86,11 @@ class StreamServer(
         )
     }
 
-    /** O FPS mudou com a transmissão ligada: avisa o cliente com um novo `profile.actual`. */
     fun updateFps(fps: Int) {
         info = info.copy(fps = fps)
         client?.enqueueControl(profileActualFrame())
     }
 
-    /** O celular girou com a transmissão ligada: avisa o cliente, que gira a imagem de volta. */
     fun updateRotation(rotation: Int) {
         if (info.rotation == rotation) return
         info = info.copy(rotation = rotation)
@@ -156,7 +127,6 @@ class StreamServer(
                 return
             }
             if (client != null) {
-                // Uma sessão por vez.
                 runCatching { accepted.close() }
                 continue
             }
@@ -185,12 +155,10 @@ class StreamServer(
         client?.authorized == true,
     )
 
-    /** O usuário do celular confirmou (ou recusou) o código de pareamento mostrado. */
     fun pairingDecision(accept: Boolean) {
         client?.localDecision(accept)
     }
 
-    /** Desconecta o computador com esta impressão digital, se estiver conectado (revogação). */
     fun disconnectComputer(fingerprint: String) {
         client?.takeIf { it.peerFingerprint == fingerprint }?.close()
     }
@@ -211,18 +179,15 @@ class StreamServer(
         @Volatile private var closed = false
         private val peer = socket.remoteSocketAddress.toString().trimStart('/')
 
-        /** Impressão digital do certificado do computador, vista no handshake do TLS. */
         @Volatile var peerFingerprint: String = ""
             private set
 
-        /** Só um computador pareado recebe vídeo ou é obedecido. */
         @Volatile var authorized = false
             private set
 
         @Volatile private var computerName = "computador"
         @Volatile private var announced = false
 
-        // Pareamento em andamento (protegido por `lock`).
         private var pairNonce: String? = null
         private var pairLocal: Boolean? = null
         private var pairRemote: Boolean? = null
@@ -232,7 +197,6 @@ class StreamServer(
             Thread({ negotiate() }, "cdc-session").start()
         }
 
-        /** TLS, depois decide se o computador é conhecido ou precisa parear. */
         private fun negotiate() {
             try {
                 socket.soTimeout = HANDSHAKE_TIMEOUT_MS
@@ -269,7 +233,6 @@ class StreamServer(
                     force = true,
                 )
                 pairing = true
-                // O pedido vale por um tempo; passado ele, a conexão cai.
                 Thread({
                     Thread.sleep(PAIRING_TTL_MS)
                     if (!authorized && !closed) denyPairing("O pareamento expirou", sendToComputer = true)
@@ -278,7 +241,6 @@ class StreamServer(
             readLoop()
         }
 
-        /** O computador é conhecido: a partir daqui ele recebe tudo. */
         private fun authorize() {
             authorized = true
             capabilities?.let { enqueueControl(it) }
@@ -320,8 +282,6 @@ class StreamServer(
             }
             if (needKeyframe) listener.onKeyframeNeeded()
         }
-
-        // --- Pareamento ---------------------------------------------------------------------
 
         private fun onPairRequest(nonce: String) {
             if (authorized) return
@@ -392,7 +352,6 @@ class StreamServer(
                     Protocol.control("pair.denied") { put("reason", reason) },
                     force = true,
                 )
-                // Dá tempo de a mensagem sair antes de fechar.
                 Thread({
                     Thread.sleep(300)
                     close()
@@ -402,8 +361,6 @@ class StreamServer(
             }
             listener.onPairingEnded(false, computerName, reason)
         }
-
-        // --- Entrada e saída ----------------------------------------------------------------
 
         private fun writeLoop() {
             try {
@@ -420,7 +377,6 @@ class StreamServer(
                     }
                 }
             } catch (_: Exception) {
-                // Cliente saiu ou a rede caiu: encerra a sessão.
             } finally {
                 close()
             }
@@ -438,7 +394,6 @@ class StreamServer(
                         message.optString("deviceName").takeIf { it.isNotBlank() }?.let { computerName = it.take(60) }
                         continue
                     }
-                    // Antes do pareamento, nada além do próprio pareamento é aceito.
                     if (!authorized) {
                         when (type) {
                             "pair.request" -> onPairRequest(message.optString("nonce"))
@@ -474,7 +429,6 @@ class StreamServer(
                     }
                 }
             } catch (_: Exception) {
-                // Mensagem inválida ou conexão encerrada.
             } finally {
                 close()
             }
@@ -490,7 +444,6 @@ class StreamServer(
             if (!wasOpen) return
             runCatching { socket.close() }
             if (client === this) client = null
-            // Um pareamento interrompido no meio também conta como terminado.
             if (pairing && !authorized) {
                 pairing = false
                 listener.onPairingEnded(false, computerName, "A conexão foi interrompida")
@@ -500,11 +453,9 @@ class StreamServer(
     }
 
     private companion object {
-        /** Cerca de 200 ms de vídeo a 30 FPS. */
         const val MAX_PENDING_VIDEO = 6
         const val HANDSHAKE_TIMEOUT_MS = 10_000
 
-        /** Quanto tempo o usuário tem para conferir e confirmar o código. */
         const val PAIRING_TTL_MS = 120_000L
     }
 }

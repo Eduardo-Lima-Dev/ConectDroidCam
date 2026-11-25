@@ -19,19 +19,6 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
-/**
- * Instala uma versão nova do app baixada das releases do GitHub, sem loja.
- *
- * O download é feito pelo Flutter; aqui só se informa a versão instalada, a pasta para o
- * arquivo e se o usuário já permitiu "instalar apps desconhecidos" para o ConectDroidCam. A
- * instalação usa o `PackageInstaller` do Android, que sempre pede a confirmação do usuário.
- * O Android só aceita a atualização se ela tiver a mesma assinatura da versão instalada.
- *
- * MethodChannel `cdc/updater`: info, canInstall, openInstallSettings, downloadDir,
- * install(path), enableBackgroundChecks (agenda a procura em segundo plano e, no Android 13+,
- * pede a permissão de notificação). O resultado da instalação volta pelo método `installStatus` (do lado nativo
- * para o Flutter), com `status` = pendingUser | success | conflict | failure e `message`.
- */
 class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
     MethodChannel.MethodCallHandler {
     private val channel = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
@@ -81,7 +68,6 @@ class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
         return mapOf("versionCode" to UpdateCheckWorker.installedBuild(activity), "versionName" to pkg.versionName)
     }
 
-    /** Android 13+: sem esta permissão, o aviso de versão nova não aparece como notificação. */
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -90,7 +76,6 @@ class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    /** O usuário já permitiu que o ConectDroidCam instale apps? (Android 8+ exige.) */
     private fun canInstall(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.O || activity.packageManager.canRequestPackageInstalls()
 
@@ -102,7 +87,6 @@ class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
         }
     }
 
-    /** Pasta privada do app para o APK baixado; apagada a cada atualização. */
     private fun downloadDir(): File = File(activity.cacheDir, "atualizacao").apply { mkdirs() }
 
     private fun install(apk: File) {
@@ -135,7 +119,6 @@ class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
             val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
             when (status) {
                 PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                    // O Android quer a confirmação do usuário: abre a tela de instalação.
                     @Suppress("DEPRECATION")
                     val confirm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)

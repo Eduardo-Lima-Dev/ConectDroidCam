@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Spike S2 (metade desktop): H.264 por TCP -> decodificacao -> dispositivo V4L2.
-# O "celular" e simulado por um ffmpeg que codifica um padrao de teste e escuta na
-# porta TCP, como o emissor real fara. O "receptor" conecta, decodifica e escreve
-# no dispositivo. Um terceiro ffmpeg le o dispositivo e mede o que realmente saiu.
-#
-# Uso: scripts/spikes/s2-v4l2.sh <dispositivo> <perfil: 720|1080|1440> [segundos]
 set -euo pipefail
 
 DEV="${1:?informe o dispositivo, ex.: /dev/video10}"

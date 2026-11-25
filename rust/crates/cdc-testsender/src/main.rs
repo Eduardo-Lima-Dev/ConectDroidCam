@@ -1,7 +1,3 @@
-//! Uso: cdc-testsender [--bind 127.0.0.1] [--port 47821] [--profile hd|fullhd|qhd] [--seconds 10]
-//!                     [--rotation 0|90|180|270] [--rotate-after SEGUNDOS:ROTACAO]
-//!                     [--advertise NOME] [--controllable] [--identity ARQUIVO] [--auto-pair]
-
 use std::net::TcpListener;
 use std::process::ExitCode;
 
@@ -21,7 +17,6 @@ struct Args {
     auto_pair: bool,
 }
 
-/// Registra o serviço mDNS e devolve o daemon, que precisa continuar vivo para ele existir.
 fn advertise(nome: &str, porta: u16) -> Result<mdns_sd::ServiceDaemon, String> {
     use mdns_sd::{ServiceDaemon, ServiceInfo};
     let daemon = ServiceDaemon::new().map_err(|e| e.to_string())?;
@@ -124,7 +119,6 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // Anuncia na rede como o app do celular faria, para testar a descoberta sem aparelho.
     let _anuncio = match &args.advertise {
         Some(nome) => match advertise(nome, args.port) {
             Ok(daemon) => {
@@ -188,7 +182,6 @@ fn main() -> ExitCode {
         ..Options::new(args.profile, args.seconds)
     };
     if args.controllable {
-        // Celular que espera ordens do computador: transmite só após `stream.start`.
         return match serve_controllable(stream, &options) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

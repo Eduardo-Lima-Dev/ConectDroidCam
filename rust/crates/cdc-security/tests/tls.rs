@@ -6,7 +6,6 @@ use std::thread;
 
 use cdc_security::{Identity, SecError, SecureLink, accept_secure, connect_secure};
 
-/// Sobe um "celular" que aceita uma conexão e devolve o link dele.
 fn servidor(identity: Identity) -> (u16, thread::JoinHandle<Result<SecureLink, SecError>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let porta = listener.local_addr().unwrap().port();
@@ -40,12 +39,10 @@ fn dados_passam_nos_dois_sentidos_e_sem_corromper() {
     .unwrap();
     let mut link_celular = h.join().unwrap().unwrap();
 
-    // 3 MB do celular para o computador, como o vídeo.
     let dados: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
     let esperado = dados.clone();
     let escritor = thread::spawn(move || {
         link_celular.stream.write_all(&dados).unwrap();
-        // Uma ordem do computador chega de volta.
         let mut ordem = [0u8; 5];
         link_celular.stream.read_exact(&mut ordem).unwrap();
         link_celular.stream.shutdown(Shutdown::Write).unwrap();
@@ -57,7 +54,6 @@ fn dados_passam_nos_dois_sentidos_e_sem_corromper() {
     link_pc.stream.write_all(b"parar").unwrap();
     let (ordem, _link) = escritor.join().unwrap();
     assert_eq!(&ordem, b"parar");
-    // O fim da escrita do celular chega como fim de arquivo.
     let mut resto = Vec::new();
     link_pc.stream.read_to_end(&mut resto).unwrap();
     assert!(resto.is_empty());
@@ -78,7 +74,6 @@ fn impressao_registrada_igual_e_aceita() {
 
 #[test]
 fn outro_certificado_no_lugar_do_celular_e_recusado() {
-    // Alguém se pôs no meio com um certificado próprio.
     let (celular, intruso, pc) = (
         Identity::generate().unwrap(),
         Identity::generate().unwrap(),
@@ -102,8 +97,6 @@ fn outro_certificado_no_lugar_do_celular_e_recusado() {
 
 #[test]
 fn servidor_sem_a_chave_do_certificado_nao_passa() {
-    // Um intruso que copia o certificado do celular (público) mas não tem a chave não
-    // consegue assinar o handshake. Aqui: certificado de um, chave de outro.
     let (celular, outro, pc) = (
         Identity::generate().unwrap(),
         Identity::generate().unwrap(),

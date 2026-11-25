@@ -4,7 +4,6 @@ use thiserror::Error;
 
 use crate::frame::FrameType;
 
-/// Falhas ao ler, escrever ou interpretar o protocolo.
 #[derive(Debug, Error)]
 pub enum ProtocolError {
     #[error("tipo de frame desconhecido: {0}")]

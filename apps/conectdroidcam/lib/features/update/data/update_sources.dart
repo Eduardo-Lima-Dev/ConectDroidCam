@@ -6,13 +6,10 @@ import 'package:flutter/services.dart';
 
 import '../domain/update_models.dart';
 
-/// Onde o app procura versões novas.
 abstract interface class ReleaseSource {
-  /// A versão mais nova publicada com um arquivo terminado em [suffix], ou `null`.
   Future<ReleaseAsset?> latest({String suffix = '.apk'});
 }
 
-/// Releases públicas do repositório no GitHub.
 class GitHubReleaseSource implements ReleaseSource {
   GitHubReleaseSource({HttpClient Function()? client})
     : _client = client ?? HttpClient.new;
@@ -46,7 +43,6 @@ class GitHubReleaseSource implements ReleaseSource {
   }
 }
 
-/// Baixa o APK, informando o progresso de 0 a 1.
 abstract interface class UpdateDownloader {
   Future<void> download(
     String url,
@@ -85,7 +81,6 @@ class HttpUpdateDownloader implements UpdateDownloader {
       } finally {
         await sink.close();
       }
-      // Um download interrompido não pode virar uma instalação.
       if (expectedSize > 0 && received != expectedSize) {
         await file.delete();
         throw const HttpException('o download veio incompleto');
@@ -96,7 +91,6 @@ class HttpUpdateDownloader implements UpdateDownloader {
   }
 }
 
-/// Lado nativo: versão instalada, permissão de instalar e a instalação.
 abstract interface class UpdaterPlatform {
   Future<int> installedBuild();
   Future<bool> canInstall();
@@ -104,8 +98,6 @@ abstract interface class UpdaterPlatform {
   Future<String> downloadDir();
   Future<void> install(String path);
 
-  /// Agenda a procura de versão nova em segundo plano (com notificação) e, no Android 13+,
-  /// pede a permissão de notificação.
   Future<void> enableBackgroundChecks();
   Stream<(InstallStatus, String?)> get installStatus;
 }

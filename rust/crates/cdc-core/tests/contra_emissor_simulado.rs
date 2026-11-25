@@ -1,5 +1,3 @@
-//! Liga o receptor ao emissor simulado e confere o relatório. Pula sem ffmpeg.
-
 use std::net::{TcpListener, TcpStream};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -57,7 +55,6 @@ fn receptor_mede_o_fluxo_e_grava_h264_valido() {
         relatorio.avg_fps
     );
 
-    // O arquivo gravado precisa ser um H.264 que o ffprobe entende, com a resolução certa.
     let saida = Command::new("ffprobe")
         .args(["-v", "error", "-select_streams", "v:0"])
         .args(["-show_entries", "stream=width,height", "-of", "csv=p=0"])

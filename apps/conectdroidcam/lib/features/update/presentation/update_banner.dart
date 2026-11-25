@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/update_controller.dart';
 
-/// Aviso de versão nova, com o botão de atualizar. Não ocupa espaço quando não há nada a dizer.
 class UpdateBanner extends ConsumerWidget {
   const UpdateBanner({super.key});
 

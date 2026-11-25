@@ -1,4 +1,3 @@
-//! TLS e pareamento de ponta a ponta: computador real do `cdc-core` contra o celular simulado.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::net::TcpListener;
@@ -16,11 +15,9 @@ use cdc_testsender::{Options as SenderOptions, PhoneAuth, accept_client, serve_c
 struct Celular {
     porta: u16,
     auth: PhoneAuth,
-    /// Códigos que o celular mostrou ao usuário.
     codigos: Arc<Mutex<Vec<String>>>,
 }
 
-/// Um celular que atende conexões em sequência, até `conexoes`.
 fn celular(confirma: bool, conexoes: usize) -> Celular {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let porta = listener.local_addr().unwrap().port();
@@ -105,7 +102,6 @@ fn esperar<T>(s: &Sessao, mut quer: impl FnMut(&SessionEvent) -> Option<T>) -> T
 fn pareia_com_o_mesmo_codigo_nos_dois_lados_e_depois_conecta_sem_pareamento() {
     let (c, pc) = (celular(true, 2), Identity::generate().unwrap());
 
-    // Primeira vez: o celular não conhece o computador.
     let s = conectar(&c, &pc, None).unwrap();
     let (codigo, fp) = esperar(&s, |e| match e {
         SessionEvent::PairingCode {
@@ -122,9 +118,7 @@ fn pareia_com_o_mesmo_codigo_nos_dois_lados_e_depois_conecta_sem_pareamento() {
         _ => None,
     });
     assert_eq!(pareado, c.auth.identity.fingerprint());
-    // O código que o celular mostrou é o mesmo que o computador mostrou.
     assert_eq!(c.codigos.lock().unwrap().as_slice(), [codigo]);
-    // E depois de pareado o celular passa a falar.
     esperar(&s, |e| {
         matches!(e, SessionEvent::Capabilities { .. }).then_some(())
     });
@@ -132,7 +126,6 @@ fn pareia_com_o_mesmo_codigo_nos_dois_lados_e_depois_conecta_sem_pareamento() {
     assert!(s.fim.join().unwrap().is_ok());
     assert!(c.auth.paired.lock().unwrap().contains(&pc.fingerprint()));
 
-    // Segunda vez, com a impressão registrada: nada de código.
     let s = conectar(&c, &pc, Some(&pareado)).unwrap();
     esperar(&s, |e| match e {
         SessionEvent::Capabilities { .. } => Some(()),
@@ -190,7 +183,6 @@ fn computador_nao_pareado_nao_recebe_nada_alem_do_pareamento() {
     esperar(&s, |e| {
         matches!(e, SessionEvent::PairingCode { .. }).then_some(())
     });
-    // Antes de parear, um comando não é obedecido e nenhuma capacidade chega.
     s.parar
         .send(&cdc_protocol::Message::StreamStart {
             width: 1280,

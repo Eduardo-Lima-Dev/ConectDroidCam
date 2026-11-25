@@ -1,13 +1,3 @@
-//! Uso: cdc-testreceiver HOST:PORTA [--seconds N] [--v4l2 /dev/videoN] [--dump arquivo.h264]
-//!                       [--canvas auto|horizontal|vertical] [--size hd|fullhd|qhd] [--preview ARQUIVO.jpg] [--quiet]
-//!                       [--identity ARQUIVO] [--pin IMPRESSAO] [--auto-confirm]
-//!                       [--do SEGUNDOS:COMANDO]...   (comandos ao celular: start:1280x720@30, stop, fps:24, camera:front|back|toggle)
-//!        cdc-testreceiver --discover [SEGUNDOS]   (lista os celulares achados na rede)
-//!
-//! Ferramenta de validação sobre o `cdc-core`: conecta a um celular (ou ao `cdc-testsender`),
-//! mede o fluxo e, opcionalmente, escreve o vídeo, já girado para ficar em pé, numa webcam
-//! virtual.
-
 use std::process::ExitCode;
 use std::thread;
 use std::time::Duration;
@@ -17,7 +7,6 @@ use cdc_core::{
     connect_secure_phone, run,
 };
 
-/// Converte `start:1280x720@30`, `stop`, `fps:24` ou `camera:front` numa mensagem.
 fn parse_command(texto: &str) -> Result<cdc_protocol::Message, String> {
     use cdc_protocol::{Facing, Message};
     let (nome, valor) = texto.split_once(':').unwrap_or((texto, ""));
@@ -57,7 +46,6 @@ fn parse_command(texto: &str) -> Result<cdc_protocol::Message, String> {
 
 const USO: &str = "uso: cdc-testreceiver HOST:PORTA [--seconds N] [--v4l2 DISPOSITIVO] [--dump ARQUIVO] [--canvas auto|horizontal|vertical] [--preview ARQUIVO.jpg] [--quiet]";
 
-/// Lista, por alguns segundos, o que a descoberta do app enxerga na rede.
 fn discover(seconds: u64) -> ExitCode {
     let _busca = match Discovery::start(|evento| match evento {
         DeviceEvent::Found(d) => eprintln!(
@@ -281,7 +269,6 @@ fn main() -> ExitCode {
             s.fps, s.kbps, s.delay_ms, s.frames
         ),
         SessionEvent::Stats(_) => {}
-        // Guarda o último quadro da prévia, para conferir a imagem a olho.
         SessionEvent::Preview(jpeg) => {
             if let Some(caminho) = &preview_file {
                 let _ = std::fs::write(caminho, jpeg);

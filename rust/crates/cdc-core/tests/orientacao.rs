@@ -1,7 +1,3 @@
-//! A imagem do celular tem que chegar em pé. Estes testes usam o `ffmpeg` de verdade e são
-//! pulados se ele não estiver instalado.
-
-// Funções auxiliares de teste: falhar com panic é o comportamento desejado.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::net::TcpListener;
@@ -35,8 +31,6 @@ fn ffmpeg(args: &[&str]) -> String {
     String::from_utf8_lossy(&saida.stderr).into_owned()
 }
 
-/// Cena em pé com `w`×`h`, uma imagem assimétrica: com o padrão de teste, girar para o lado
-/// errado ou de cabeça para baixo muda o resultado.
 fn criar_cena(destino: &Path, w: u32, h: u32) {
     ffmpeg(&[
         "-f",
@@ -49,7 +43,6 @@ fn criar_cena(destino: &Path, w: u32, h: u32) {
     ]);
 }
 
-/// O quadro como o sensor o entregaria: a cena girada `rotacao` graus ao contrário.
 fn criar_sensor(cena: &Path, destino: &Path, rotacao: u32) {
     let filtro = match rotacao {
         90 => "transpose=2",
@@ -81,7 +74,6 @@ fn aplicar(sensor: &Path, destino: &Path, filtro: Option<String>) {
     ]);
 }
 
-/// Similaridade estrutural (SSIM, de 0 a 1) entre duas imagens do mesmo tamanho.
 fn ssim(a: &Path, b: &Path) -> f64 {
     let log = ffmpeg(&[
         "-i",
@@ -109,7 +101,6 @@ fn a_rotacao_anunciada_deixa_a_imagem_em_pe() {
     }
     let dir = std::env::temp_dir().join(format!("cdc-orient-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    // O sensor é sempre horizontal.
     let (sensor_w, sensor_h) = (640, 360);
 
     for rotacao in [0u32, 90, 180, 270] {
@@ -130,8 +121,6 @@ fn a_rotacao_anunciada_deixa_a_imagem_em_pe() {
             &certo,
             video_filter(sensor_w, sensor_h, rotacao, cena_w, cena_h),
         );
-        // Girar o oposto do certo tem que dar uma imagem claramente diferente: sem isto o
-        // teste não provaria a direção.
         aplicar(
             &sensor,
             &errado,
@@ -165,7 +154,6 @@ fn imagem_em_pe_num_quadro_horizontal_ganha_barras_pretas_dos_lados() {
     criar_cena(&cena, 360, 640);
     criar_sensor(&cena, &sensor, 90);
 
-    // Cena em pé num quadro horizontal 640×360.
     let filtro = video_filter(640, 360, 90, 640, 360).expect("precisa de filtro");
     let bruto = Command::new("ffmpeg")
         .args(["-hide_banner", "-loglevel", "error", "-i"])
@@ -202,7 +190,6 @@ fn imagem_em_pe_num_quadro_horizontal_ganha_barras_pretas_dos_lados() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// Sobe o emissor simulado numa porta livre e devolve o endereço.
 fn emissor(opcoes: SenderOptions) -> (String, thread::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endereco = listener.local_addr().unwrap().to_string();
@@ -261,7 +248,6 @@ fn girar_o_celular_no_meio_da_sessao_reinicia_a_saida_com_a_nova_rotacao() {
             _ => None,
         })
         .collect();
-    // O quadro de saída não muda de tamanho, só a rotação aplicada.
     assert_eq!(saidas, vec![(1920, 1080, 0), (1920, 1080, 90)]);
     assert!(
         relatorio.video_frames > 150,
@@ -302,12 +288,10 @@ fn stop_encerra_a_sessao_sem_esperar_o_emissor() {
 fn conectar_a_um_endereco_invalido_explica_o_erro() {
     let e = connect("isto nao e um endereco", Duration::from_millis(200)).unwrap_err();
     assert!(e.to_string().contains("endereço inválido"), "{e}");
-    // Porta fechada: recusa na hora.
     let e = connect("127.0.0.1:1", Duration::from_millis(500)).unwrap_err();
     assert!(e.to_string().contains("não consegui conectar"), "{e}");
 }
 
-/// Lê as dimensões de um JPEG pelo ffprobe, que o decodifica de verdade.
 fn dimensoes_jpeg(bytes: &[u8]) -> (u32, u32) {
     use std::io::Write;
     let mut filho = Command::new("ffprobe")
@@ -348,10 +332,9 @@ fn a_previa_chega_como_jpeg_valido_ja_em_pe_e_no_formato_escolhido() {
         (cdc_core::Canvas::Vertical, (480, 854)),
     ] {
         let mut opcoes = SenderOptions::new(VideoProfile::Hd, 4);
-        opcoes.rotation = 90; // celular em pé
+        opcoes.rotation = 90;
         let (endereco, servidor) = emissor(opcoes);
         let sessao = SessionOptions {
-            // Sem webcam virtual: só a prévia.
             sink: Sink::default(),
             preview: true,
             canvas,
@@ -367,7 +350,6 @@ fn a_previa_chega_como_jpeg_valido_ja_em_pe_e_no_formato_escolhido() {
         .unwrap();
         let _ = servidor.join();
 
-        // 4 s a 10 por segundo; tolera o início e a fila que descarta quadros.
         assert!(
             quadros.len() >= 15,
             "{canvas:?}: só {} quadros de prévia",
@@ -384,7 +366,6 @@ fn a_previa_chega_como_jpeg_valido_ja_em_pe_e_no_formato_escolhido() {
     }
 }
 
-/// Roda uma sessão curta e devolve as saídas de vídeo (largura, altura, rotação) anunciadas.
 fn saidas_da_sessao(
     rotation: u32,
     rotate_after: Option<(u32, u32)>,
@@ -427,7 +408,6 @@ fn o_formato_automatico_acompanha_a_posicao_do_celular_ao_conectar() {
         return;
     }
     use cdc_core::Canvas;
-    // Em pé: saída vertical. Deitado: horizontal.
     assert_eq!(
         saidas_da_sessao(90, None, Canvas::Auto),
         vec![(1080, 1920, 90)]
@@ -436,7 +416,6 @@ fn o_formato_automatico_acompanha_a_posicao_do_celular_ao_conectar() {
         saidas_da_sessao(0, None, Canvas::Auto),
         vec![(1920, 1080, 0)]
     );
-    // Formato escolhido à mão vale, seja qual for a posição.
     assert_eq!(
         saidas_da_sessao(90, None, Canvas::Horizontal),
         vec![(1920, 1080, 90)]
@@ -453,7 +432,6 @@ fn o_formato_automatico_nao_muda_quando_o_celular_gira_no_meio_da_sessao() {
         eprintln!("ffmpeg ausente: teste pulado");
         return;
     }
-    // Começa em pé (vertical) e é deitado: o tamanho da webcam virtual não pode mudar.
     let saidas = saidas_da_sessao(90, Some((3, 0)), cdc_core::Canvas::Auto);
     assert_eq!(saidas, vec![(1080, 1920, 90), (1080, 1920, 0)]);
 }
@@ -464,8 +442,6 @@ fn trocar_a_resolucao_do_celular_nao_muda_o_tamanho_da_saida() {
         eprintln!("ffmpeg ausente: teste pulado");
         return;
     }
-    // É o que mantém o OBS feliz: a webcam virtual tem sempre o mesmo tamanho, seja o
-    // celular HD, Full HD ou 2K.
     let mut tamanhos = Vec::new();
     for perfil in [VideoProfile::Hd, VideoProfile::FullHd, VideoProfile::Qhd] {
         let (endereco, servidor) = emissor(SenderOptions::new(perfil, 3));
@@ -532,11 +508,8 @@ fn o_tamanho_da_saida_pode_ser_escolhido() {
     }
 }
 
-/// Largura, altura e dispositivo de uma saída de vídeo.
 type Saida = (u32, u32, Option<String>);
 
-/// Roda uma sessão com dispositivos por tamanho e formato e devolve o primeiro evento de saída
-/// e os avisos.
 fn sessao_com_dispositivos(
     rotation: u32,
     tamanho: cdc_core::OutputSize,
@@ -598,14 +571,11 @@ fn cada_tamanho_e_formato_escreve_no_seu_proprio_dispositivo() {
         return;
     }
     use cdc_core::{Canvas, OutputSize};
-    // Celular em pé, automático, Full HD: o dispositivo vertical de Full HD.
     let (saida, avisos) = sessao_com_dispositivos(90, OutputSize::FullHd, Canvas::Auto, familia());
     assert_eq!(saida, Some((1080, 1920, Some("null:fullhd-v".into()))));
     assert!(avisos.is_empty(), "{avisos:?}");
-    // Deitado, 2K: o horizontal de 2K.
     let (saida, _) = sessao_com_dispositivos(0, OutputSize::Qhd, Canvas::Auto, familia());
     assert_eq!(saida, Some((2560, 1440, Some("null:qhd-h".into()))));
-    // Formato escolhido à mão, HD: vertical de HD, mesmo com o celular deitado.
     let (saida, _) = sessao_com_dispositivos(0, OutputSize::Hd, Canvas::Vertical, familia());
     assert_eq!(saida, Some((720, 1280, Some("null:hd-v".into()))));
 }
@@ -617,7 +587,6 @@ fn o_tamanho_de_cada_dispositivo_nunca_depende_da_resolucao_do_celular() {
         return;
     }
     use cdc_core::{Canvas, OutputSize};
-    // O mesmo dispositivo recebe sempre o mesmo tamanho, seja qual for o celular.
     for perfil in [VideoProfile::Hd, VideoProfile::FullHd, VideoProfile::Qhd] {
         let (endereco, servidor) = emissor(SenderOptions::new(perfil, 3));
         let sessao = SessionOptions {
@@ -656,7 +625,6 @@ fn sem_o_dispositivo_do_par_avisa_e_ainda_mostra_a_previa() {
         return;
     }
     use cdc_core::{Canvas, OutputSize, ShapeDevice};
-    // Só existe o horizontal de Full HD; o celular está em pé.
     let so_um = vec![ShapeDevice {
         size: OutputSize::FullHd,
         canvas: Canvas::Horizontal,

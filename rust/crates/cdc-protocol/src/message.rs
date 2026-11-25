@@ -1,17 +1,10 @@
-//! Mensagens de controle (JSON) do protocolo v1.
-//!
-//! Cada mensagem viaja em um frame do tipo [`FrameType::Control`] dentro de um
-//! envelope `{"protocolVersion": 1, "type": "...", ...campos}`.
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::ProtocolError;
 use crate::frame::{Frame, FrameType};
 
-/// Versão do protocolo implementada por este crate.
 pub const PROTOCOL_VERSION: u32 = 1;
 
-/// Sistema do aparelho que enviou o `hello`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Platform {
@@ -21,7 +14,6 @@ pub enum Platform {
     Macos,
 }
 
-/// Perfis de vídeo oferecidos ao usuário.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VideoProfile {
@@ -33,7 +25,6 @@ pub enum VideoProfile {
 impl VideoProfile {
     pub const ALL: [Self; 3] = [Self::Hd, Self::FullHd, Self::Qhd];
 
-    /// Largura e altura nominais.
     pub fn dimensions(self) -> (u32, u32) {
         match self {
             Self::Hd => (1280, 720),
@@ -42,7 +33,6 @@ impl VideoProfile {
         }
     }
 
-    /// Nome exibido ao usuário; "2K" sempre aparece com a resolução.
     pub fn label(self) -> &'static str {
         match self {
             Self::Hd => "HD (1280×720)",
@@ -51,7 +41,6 @@ impl VideoProfile {
         }
     }
 
-    /// Faixa inicial de bitrate de vídeo, em kb/s (valores de projeto, ajustáveis).
     pub fn bitrate_range_kbps(self) -> (u32, u32) {
         match self {
             Self::Hd => (2_000, 4_000),
@@ -61,7 +50,6 @@ impl VideoProfile {
     }
 }
 
-/// Câmera do aparelho.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Facing {
@@ -69,7 +57,6 @@ pub enum Facing {
     Back,
 }
 
-/// Se um perfil pode ser usado neste aparelho, e por quê não, quando não pode.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProfileAvailability {
     pub profile: VideoProfile,
@@ -78,20 +65,17 @@ pub struct ProfileAvailability {
     pub reason: Option<String>,
 }
 
-/// Uma resolução que o celular pode ou não entregar, com o motivo quando não pode.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapabilityMode {
     pub width: u32,
     pub height: u32,
     pub available: bool,
-    /// Maior FPS que a câmera sustenta nesta resolução.
     pub max_fps: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
 
-/// Códigos de erro tipados.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
@@ -109,77 +93,55 @@ pub enum ErrorCode {
     UsbTunnelFailed,
     VirtualCameraUnavailable,
     DecoderFailed,
-    /// Um comando do computador (iniciar, trocar de câmera...) não pôde ser executado.
     CommandFailed,
 }
 
-/// Mensagem de controle.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all_fields = "camelCase")]
 pub enum Message {
-    /// Primeira mensagem de cada lado.
     #[serde(rename = "hello")]
     Hello {
         device_name: String,
         platform: Platform,
         app_version: String,
     },
-    /// Desktop inicia o pareamento, com um nonce aleatório em hexadecimal.
     #[serde(rename = "pair.request")]
     PairRequest { nonce: String },
-    /// Cada lado confirma (ou recusa) o código de 6 dígitos exibido.
     #[serde(rename = "pair.confirm")]
     PairConfirm { nonce: String, confirmed: bool },
     #[serde(rename = "pair.denied")]
     PairDenied { reason: String },
-    /// Desktop pergunta quais perfis o celular suporta.
     #[serde(rename = "profile.query")]
     ProfileQuery,
-    /// Celular responde com a disponibilidade de cada perfil.
     #[serde(rename = "profile.list")]
     ProfileList { profiles: Vec<ProfileAvailability> },
-    /// Desktop escolhe o perfil.
     #[serde(rename = "profile.set")]
     ProfileSet {
         profile: VideoProfile,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         bitrate_kbps: Option<u32>,
     },
-    /// Celular informa o que realmente está entregando.
     #[serde(rename = "profile.actual")]
     ProfileActual {
         width: u32,
         height: u32,
         fps: u32,
         bitrate_kbps: u32,
-        /// Graus, no sentido horário, que o quadro decodificado precisa girar para ficar
-        /// em pé: 0, 90, 180 ou 270. O codificador de um celular entrega os quadros na
-        /// orientação do sensor, então com o aparelho em pé a imagem chega deitada.
-        /// Ausente (emissores antigos) vale 0.
         #[serde(default)]
         rotation: u32,
     },
-    /// Celular informa o que sabe fazer e em que estado está. Vai logo após a conexão e
-    /// de novo sempre que algo muda (transmissão ligada ou parada, câmera trocada).
     #[serde(rename = "capabilities")]
     Capabilities {
         modes: Vec<CapabilityMode>,
-        /// FPS fixos que a câmera em uso aceita.
         fps_options: Vec<u32>,
-        /// Câmera em uso.
         facing: Facing,
-        /// O aparelho tem câmera frontal e traseira.
         can_switch: bool,
-        /// A transmissão de vídeo está ligada.
         streaming: bool,
     },
-    /// Computador pede ao celular que comece a transmitir com este tamanho e FPS.
     #[serde(rename = "stream.start")]
     StreamStart { width: u32, height: u32, fps: u32 },
-    /// Computador pede que o celular pare de transmitir, mantendo a conexão.
     #[serde(rename = "stream.stop")]
     StreamStop,
-    /// Computador muda o FPS com a transmissão ligada.
     #[serde(rename = "fps.set")]
     FpsSet { fps: u32 },
     #[serde(rename = "audio.set")]
@@ -189,7 +151,6 @@ pub enum Message {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         facing: Option<Facing>,
     },
-    /// Pede um IDR ao encoder, depois de descartar frames.
     #[serde(rename = "keyframe.request")]
     KeyframeRequest,
     #[serde(rename = "stats")]
@@ -228,7 +189,6 @@ struct EnvelopeIn {
 }
 
 impl Message {
-    /// Serializa a mensagem com o envelope de versão.
     pub fn to_json(&self) -> Result<Vec<u8>, ProtocolError> {
         Ok(serde_json::to_vec(&EnvelopeOut {
             protocol_version: PROTOCOL_VERSION,
@@ -236,7 +196,6 @@ impl Message {
         })?)
     }
 
-    /// Interpreta JSON, recusando versões diferentes da suportada.
     pub fn from_json(bytes: &[u8]) -> Result<Self, ProtocolError> {
         let probe: VersionProbe = serde_json::from_slice(bytes)?;
         if probe.protocol_version != PROTOCOL_VERSION {
@@ -245,12 +204,10 @@ impl Message {
         Ok(serde_json::from_slice::<EnvelopeIn>(bytes)?.message)
     }
 
-    /// Embrulha a mensagem em um frame de controle.
     pub fn to_frame(&self, pts_us: u64) -> Result<Frame, ProtocolError> {
         Ok(Frame::new(FrameType::Control, 0, pts_us, self.to_json()?))
     }
 
-    /// Extrai a mensagem de um frame de controle.
     pub fn from_frame(frame: &Frame) -> Result<Self, ProtocolError> {
         if frame.kind != FrameType::Control {
             return Err(ProtocolError::NotControl(frame.kind));
@@ -477,7 +434,6 @@ mod tests {
 
     #[test]
     fn profile_actual_sem_rotation_vale_zero() {
-        // Emissores anteriores a este campo não o enviam.
         let json = br#"{"protocolVersion":1,"type":"profile.actual","width":1280,"height":720,"fps":30,"bitrateKbps":3000}"#;
         let Message::ProfileActual { rotation, .. } = Message::from_json(json).unwrap() else {
             panic!("não é profile.actual");

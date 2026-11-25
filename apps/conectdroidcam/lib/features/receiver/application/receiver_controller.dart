@@ -8,24 +8,8 @@ import '../data/receiver_settings_store.dart';
 import '../data/rust_receiver_platform.dart';
 import '../domain/receiver_models.dart';
 
-enum ReceiverPhase {
-  /// Carregando o núcleo.
-  starting,
+enum ReceiverPhase { starting, unavailable, idle, connecting, connected }
 
-  /// O núcleo não carregou; veja [ReceiverState.error].
-  unavailable,
-
-  /// Pronto, sem celular conectado.
-  idle,
-
-  /// Abrindo a conexão.
-  connecting,
-
-  /// Recebendo vídeo de um celular.
-  connected,
-}
-
-/// O código que o usuário precisa conferir com o do celular.
 class PairingPrompt {
   const PairingPrompt({required this.code, required this.phoneFingerprint});
 
@@ -64,31 +48,21 @@ class ReceiverState {
   final List<Phone> phones;
   final List<VideoDevice> devices;
 
-  /// Dispositivo escolhido: [ReceiverController.automaticDevice] para usar a webcam do
-  /// tamanho e formato certos, o caminho de um dispositivo específico, ou `null` para só
-  /// medir a conexão.
   final String? selectedDevice;
 
-  /// Formato do quadro entregue à webcam virtual.
   final ImageFormat format;
 
-  /// Tamanho do quadro entregue à webcam virtual (não acompanha o celular).
   final OutputSize outputSize;
   final bool ffmpegOk;
 
-  /// Conectar sozinho a um celular já usado quando ele aparecer na rede.
   final bool autoConnect;
 
-  /// Celulares a que o usuário já conectou (identificadores mDNS).
   final Set<String> trustedPhones;
 
-  /// Impressão digital de cada celular pareado; veja [ReceiverSettings.fingerprints].
   final Map<String, String> fingerprints;
 
-  /// Pareamento esperando o usuário conferir o código; `null` se não há.
   final PairingPrompt? pairing;
 
-  /// Endereço do celular conectado.
   final String? connectedTo;
   final String? phoneName;
   final String? phonePlatform;
@@ -96,33 +70,25 @@ class ReceiverState {
   final OutgoingVideo? outgoing;
   final LiveStats? stats;
 
-  /// O que o celular oferece e seu estado; `null` até ele informar.
   final PhoneCapabilities? capabilities;
 
-  /// Resolução e FPS escolhidos aqui para o celular transmitir.
   final PhoneMode? remoteMode;
   final int remoteFps;
 
-  /// O celular está transmitindo (por ordem daqui ou por decisão de quem o usa).
   bool get phoneStreaming => capabilities?.streaming ?? false;
 
-  /// Aviso que não interrompe a conexão.
   final String? notice;
 
-  /// Falha que o usuário precisa ver.
   final String? error;
   final String? discoveryError;
 
   bool get isBusy =>
       phase == ReceiverPhase.connecting || phase == ReceiverPhase.connected;
 
-  /// Existe algum dispositivo criado pelo script de instalação?
   bool get hasConectDroidCamDevice => devices.any((d) => d.isConectDroidCam);
 
-  /// Existem as webcams por tamanho e formato (uma para cada combinação)?
   bool get hasDeviceFamily => devices.any((d) => d.shape != null);
 
-  /// As webcams por tamanho e formato, para o núcleo escolher a certa.
   List<ShapeDevice> get shapeDevices => [for (final d in devices) ?d.shape];
 
   ReceiverState copyWith({
@@ -192,8 +158,6 @@ final receiverSettingsStoreProvider = Provider<ReceiverSettingsStore>(
   (ref) => FileReceiverSettingsStore(),
 );
 
-/// O último quadro da prévia. Fica fora do estado principal para a tela inteira não ser
-/// reconstruída a cada quadro (cerca de 10 por segundo).
 final previewFrameProvider = NotifierProvider<PreviewFrame, Uint8List?>(
   PreviewFrame.new,
 );
@@ -209,7 +173,6 @@ final receiverControllerProvider =
     NotifierProvider<ReceiverController, ReceiverState>(ReceiverController.new);
 
 class ReceiverController extends Notifier<ReceiverState> {
-  /// Valor de [ReceiverState.selectedDevice] que escolhe a webcam por tamanho e formato.
   static const automaticDevice = 'auto';
 
   late ReceiverPlatform _platform;
@@ -218,17 +181,12 @@ class ReceiverController extends Notifier<ReceiverState> {
   StreamSubscription<ReceiverUpdate>? _session;
   Timer? _rediscover;
 
-  /// Identificador do celular da conexão atual, para lembrá-lo e para não reconectar
-  /// sozinho a um celular que o usuário acabou de desconectar.
   String? _connectedId;
 
-  /// Celulares a que não se conecta sozinho até eles saírem da rede e voltarem: o usuário
-  /// desconectou de propósito, ou a conexão acabou de falhar.
   final Set<String> _noAuto = {};
 
   @override
   ReceiverState build() {
-    // Guardados aqui porque o Riverpod não deixa usar `ref` dentro de `onDispose`.
     final platform = _platform = ref.read(receiverPlatformProvider);
     _store = ref.read(receiverSettingsStoreProvider);
     final preview = ref.read(previewFrameProvider.notifier);
@@ -238,7 +196,6 @@ class ReceiverController extends Notifier<ReceiverState> {
       _session?.cancel();
       unawaited(platform.disconnect().catchError((Object _) {}));
       unawaited(platform.stopDiscovery().catchError((Object _) {}));
-      // O notifier da prévia pode já ter sido descartado junto.
       try {
         preview.update(null);
       } on Object catch (_) {}
@@ -246,8 +203,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     return const ReceiverState();
   }
 
-  /// Carrega o núcleo, confere o `ffmpeg`, lista as webcams virtuais e começa a procurar
-  /// celulares.
   Future<void> start() async {
     if (state.phase != ReceiverPhase.starting &&
         state.phase != ReceiverPhase.unavailable) {
@@ -288,8 +243,6 @@ class ReceiverController extends Notifier<ReceiverState> {
         : current != null && devices.any((d) => d.path == current);
     String? choice = current;
     if (!stillValid) {
-      // Prefere a escolha automática (uma webcam por tamanho e formato); sem ela, o
-      // dispositivo único das versões anteriores; sem nenhum, só medir.
       choice = family
           ? automaticDevice
           : devices
@@ -300,9 +253,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     state = state.copyWith(devices: devices, selectedDevice: () => choice);
   }
 
-  /// Quanto esperar antes de procurar de novo quando a lista continua vazia. O mDNS recua
-  /// as consultas (1, 2, 4, 8, 16 s...) e um celular que demorou a responder à primeira
-  /// só seria achado muito depois.
   static const rediscoverEvery = Duration(seconds: 8);
 
   void _startDiscovery() {
@@ -312,13 +262,10 @@ class ReceiverController extends Notifier<ReceiverState> {
         _restartDiscovery();
       }
     });
-    // A primeira busca se inscreve na hora: um celular que apareça logo depois não pode se perder.
     _subscribeDiscovery();
   }
 
-  /// Procura de novo agora, sem esperar o recuo das consultas.
   Future<void> rediscover() async {
-    // Quem já saiu da rede não avisaria mais depois de a busca reiniciar: recomeça limpo.
     state = state.copyWith(phones: const []);
     await _restartDiscovery();
   }
@@ -340,7 +287,6 @@ class ReceiverController extends Notifier<ReceiverState> {
         Phone? appeared;
         if (lost != null) {
           phones.removeWhere((p) => p.id == lost);
-          // Saiu da rede: quando voltar, pode reconectar sozinho de novo.
           _noAuto.remove(lost);
         } else if (change.phone case final phone?) {
           final i = phones.indexWhere((p) => p.id == phone.id);
@@ -360,8 +306,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     );
   }
 
-  /// Conecta sozinho a um celular já usado, se isso estiver ligado e não houver motivo
-  /// para esperar.
   void _maybeAutoConnect(Phone phone) {
     if (!state.autoConnect ||
         state.phase != ReceiverPhase.idle ||
@@ -377,8 +321,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     state = state.copyWith(selectedDevice: () => path);
   }
 
-  /// Escolhe o formato da imagem. Com o celular conectado, reconecta para o novo formato
-  /// valer: o tamanho da webcam virtual é fixo dentro de uma sessão.
   Future<void> setFormat(ImageFormat value) async {
     if (value == state.format) return;
     state = state.copyWith(format: value);
@@ -386,8 +328,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     if (state.isBusy) await _reconnect();
   }
 
-  /// Escolhe o tamanho da imagem entregue à webcam virtual. Com o celular conectado,
-  /// reconecta para valer.
   Future<void> setOutputSize(OutputSize value) async {
     if (value == state.outputSize) return;
     state = state.copyWith(outputSize: value);
@@ -395,14 +335,12 @@ class ReceiverController extends Notifier<ReceiverState> {
     if (state.isBusy) await _reconnect();
   }
 
-  /// Desconecta e conecta de novo ao mesmo celular, sem contar como desconexão do usuário.
   Future<void> _reconnect() async {
     final address = state.connectedTo;
     if (address == null) return;
     final name = state.phoneName;
     final id = _connectedId;
     await _platform.disconnect();
-    // Espera a sessão terminar de verdade antes de abrir a próxima.
     for (var i = 0; i < 100 && state.isBusy; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
@@ -410,19 +348,16 @@ class ReceiverController extends Notifier<ReceiverState> {
     await connect(address, name: name, id: id);
   }
 
-  /// Liga ou desliga a conexão automática a celulares já usados.
   Future<void> setAutoConnect(bool value) async {
     state = state.copyWith(autoConnect: value);
     await _saveSettings();
     if (value) {
-      // Já pode haver um celular usado na lista.
       for (final phone in state.phones) {
         _maybeAutoConnect(phone);
       }
     }
   }
 
-  /// Esquece todos os celulares lembrados.
   Future<void> forgetPhones() async {
     state = state.copyWith(trustedPhones: const {}, fingerprints: const {});
     await _saveSettings();
@@ -438,8 +373,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     ),
   );
 
-  /// Conecta a um celular pelo endereço `ip:porta`. [id] identifica o celular, quando ele
-  /// veio da lista, para lembrá-lo depois de conectar.
   Future<void> connect(String address, {String? name, String? id}) async {
     final target = address.trim();
     if (state.isBusy || target.isEmpty) return;
@@ -491,8 +424,6 @@ class ReceiverController extends Notifier<ReceiverState> {
         .listen(
           _onUpdate,
           onError: (Object e) => _finish(error: '$e'),
-          // O núcleo sempre termina com Ended ou Failed; se o fluxo fechar sem isso (a
-          // thread caiu), a tela não pode ficar presa em "conectando".
           onDone: () {
             if (state.isBusy) {
               _finish(error: 'A conexão terminou de forma inesperada.');
@@ -501,7 +432,6 @@ class ReceiverController extends Notifier<ReceiverState> {
         );
   }
 
-  /// Chave com que o celular é lembrado: o identificador da lista, ou o endereço digitado.
   String _phoneKey(String address) => _connectedId ?? 'addr:$address';
 
   bool _looksLikeAddress(String text) {
@@ -511,8 +441,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     return port != null && port > 0 && port < 65536;
   }
 
-  /// Desconecta por vontade do usuário: não reconecta sozinho a este celular até ele sair
-  /// da rede e voltar.
   Future<void> disconnect() async {
     if (!state.isBusy) return;
     if (_connectedId case final id?) _noAuto.add(id);
@@ -543,7 +471,6 @@ class ReceiverController extends Notifier<ReceiverState> {
       case CapabilitiesUpdate(:final capabilities):
         _onCapabilities(capabilities);
       case ProfileUpdate(:final video):
-        // Se o celular já transmite, a escolha daqui passa a mostrar o que ele entrega.
         final active = state.capabilities?.find(video.width, video.height);
         state = state.copyWith(
           phase: ReceiverPhase.connected,
@@ -564,19 +491,15 @@ class ReceiverController extends Notifier<ReceiverState> {
       case NoticeUpdate(:final message):
         state = state.copyWith(notice: () => message);
       case EndedUpdate():
-        // O celular ainda pode estar na lista por um instante depois de parar; sem isto,
-        // a conexão automática tentaria de novo e falharia. Vale até ele sair e voltar.
         if (_connectedId case final id?) _noAuto.add(id);
         _finish();
       case FailedUpdate(:final message):
-        // Não tenta de novo sozinho em loop: espera o celular sair e voltar.
         if (_connectedId case final id?) _noAuto.add(id);
         _finish(error: message);
     }
   }
 
   void _onCapabilities(PhoneCapabilities caps) {
-    // Mantém a escolha se o celular ainda a oferece; senão, Full HD ou a maior disponível.
     var mode = state.remoteMode;
     if (mode == null || caps.find(mode.width, mode.height)?.available != true) {
       mode = caps.find(1920, 1080)?.available == true
@@ -592,7 +515,6 @@ class ReceiverController extends Notifier<ReceiverState> {
       capabilities: () => caps,
       remoteMode: () => mode,
       remoteFps: fps,
-      // Parou de transmitir: o que vinha do celular deixa de valer.
       incoming: caps.streaming ? null : () => null,
       outgoing: caps.streaming ? null : () => null,
       stats: caps.streaming ? null : () => null,
@@ -604,8 +526,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     }
   }
 
-  // --- Controle do celular -------------------------------------------------------------
-
   Future<void> _command(Future<String?> Function() send) async {
     final reason = await send();
     if (reason != null) {
@@ -615,8 +535,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     }
   }
 
-  /// Escolhe a resolução. Com o celular transmitindo, ele para e recomeça no novo tamanho
-  /// (a webcam virtual não muda de tamanho, então o OBS não percebe).
   Future<void> selectRemoteMode(PhoneMode mode) async {
     final caps = state.capabilities;
     if (caps == null || !mode.available || mode == state.remoteMode) return;
@@ -634,7 +552,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     return fps > mode.maxFps ? mode.maxFps : fps;
   }
 
-  /// Escolhe o FPS; com o celular transmitindo, vale na hora.
   Future<void> selectRemoteFps(int fps) async {
     final caps = state.capabilities;
     if (caps == null || fps == state.remoteFps) return;
@@ -656,7 +573,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     await _command(_platform.stopStream);
   }
 
-  /// Alterna entre a câmera frontal e a traseira do celular.
   Future<void> switchPhoneCamera() async {
     final caps = state.capabilities;
     if (caps == null || !caps.canSwitch) return;
@@ -664,8 +580,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     await _command(() => _platform.switchCamera(front: !caps.front));
   }
 
-  /// Guarda a impressão digital do celular que acabou de ser pareado e o lembra para
-  /// reconectar sozinho da próxima vez.
   void _rememberPairedPhone(String fingerprint) {
     final key = _phoneKey(state.connectedTo ?? '');
     state = state.copyWith(
@@ -676,7 +590,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     unawaited(_saveSettings());
   }
 
-  /// O usuário conferiu o código: [accept] diz se é o mesmo nas duas telas.
   Future<void> confirmPairing(bool accept) async {
     if (state.pairing == null) return;
     final reason = await _platform.confirmPairing(accept);
@@ -688,7 +601,6 @@ class ReceiverController extends Notifier<ReceiverState> {
     }
   }
 
-  /// Esquece o pareamento de um celular: da próxima vez será preciso parear de novo.
   Future<void> unpair(String key) async {
     state = state.copyWith(
       trustedPhones: {...state.trustedPhones}..remove(key),

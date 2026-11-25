@@ -1,6 +1,3 @@
-//! Saída do vídeo recebido: um `ffmpeg` que decodifica o H.264 e escreve na webcam virtual
-//! (V4L2), mais um arquivo H.264 opcional para inspeção.
-
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -12,17 +9,11 @@ use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
-/// Valor de [`Sink::v4l2`] que decodifica o vídeo e o descarta, sem abrir dispositivo. Serve
-/// a testes, que não têm uma webcam virtual. Qualquer caminho que comece com isto (por exemplo
-/// `null:vertical`) também descarta, o que permite distinguir dispositivos nos testes.
 pub const DISCARD: &str = "null";
 
-/// Para onde vai o vídeo recebido.
 #[derive(Debug, Clone, Default)]
 pub struct Sink {
-    /// Dispositivo V4L2, por exemplo `/dev/video10`, ou [`DISCARD`].
     pub v4l2: Option<String>,
-    /// Arquivo H.264 em Annex B, para inspeção com `ffprobe`.
     pub dump: Option<String>,
 }
 
@@ -36,7 +27,6 @@ pub enum OutputError {
     Io(#[from] io::Error),
 }
 
-/// Últimas linhas que o `ffmpeg` escreveu no stderr, para explicar uma falha.
 type Log = Arc<Mutex<VecDeque<String>>>;
 
 struct Running {
@@ -56,7 +46,6 @@ impl Running {
         }
     }
 
-    /// Fecha a entrada, espera o `ffmpeg` terminar e, se ele não terminar, o mata.
     fn finish(mut self) {
         drop(self.stdin.take());
         let limite = Instant::now() + Duration::from_secs(2);
@@ -71,8 +60,6 @@ impl Running {
     }
 }
 
-/// Largura dos quadros de prévia e quantos por segundo. Pequenos de propósito: a prévia é
-/// para conferir o enquadramento, não para ser a imagem final.
 const PREVIEW_WIDTH: u32 = 480;
 const PREVIEW_FPS: u32 = 10;
 
@@ -81,21 +68,17 @@ pub(crate) struct Output {
     device: Option<String>,
     dump: Option<File>,
     running: Option<Running>,
-    /// Filtro com que o processo atual foi iniciado (`None` = sem filtro).
     filter: Option<Option<String>>,
-    /// Gera também quadros JPEG de prévia.
     preview: bool,
     preview_tx: SyncSender<Vec<u8>>,
     preview_rx: Receiver<Vec<u8>>,
 }
 
-/// Separa um fluxo de JPEGs concatenados (a saída `image2pipe` do `ffmpeg`) em quadros.
 #[derive(Default)]
 pub(crate) struct JpegSplitter {
     buf: Vec<u8>,
 }
 
-/// Mais que isto sem achar o fim de um quadro é lixo: descarta, para não crescer sem fim.
 const MAX_JPEG_BUFFER: usize = 8 * 1024 * 1024;
 
 impl JpegSplitter {
@@ -104,7 +87,6 @@ impl JpegSplitter {
         let mut frames = Vec::new();
         loop {
             let Some(start) = self.buf.windows(2).position(|w| w == [0xFF, 0xD8]) else {
-                // Sem início de quadro: só interessa o último byte, que pode ser o 0xFF dele.
                 let keep = usize::from(self.buf.last() == Some(&0xFF));
                 self.buf.drain(..self.buf.len() - keep);
                 break;
@@ -129,7 +111,6 @@ impl JpegSplitter {
 
 impl Output {
     pub(crate) fn new(sink: &Sink, ffmpeg: &str, preview: bool) -> Result<Self, OutputError> {
-        // Fila curta: se a interface não acompanha, os quadros de prévia são descartados.
         let (preview_tx, preview_rx) = mpsc::sync_channel(2);
         Ok(Self {
             ffmpeg: ffmpeg.to_string(),
@@ -143,27 +124,22 @@ impl Output {
         })
     }
 
-    /// Define em que dispositivo escrever na próxima vez que o `ffmpeg` iniciar.
     pub(crate) fn set_device(&mut self, device: Option<String>) {
         self.device = device;
     }
 
-    /// Próximo quadro de prévia pronto, se houver.
     pub(crate) fn next_preview(&self) -> Option<Vec<u8>> {
         self.preview_rx.try_recv().ok()
     }
 
-    /// `true` se há um `ffmpeg` em andamento, com qualquer filtro.
     pub(crate) fn has_process(&self) -> bool {
         self.running.is_some()
     }
 
-    /// `true` se há um `ffmpeg` em andamento com exatamente este filtro.
     pub(crate) fn is_running_with(&self, filter: &Option<String>) -> bool {
         self.running.is_some() && self.filter.as_ref() == Some(filter)
     }
 
-    /// Inicia (ou reinicia, se o filtro mudou) o `ffmpeg`. Sem dispositivo, não faz nada.
     pub(crate) fn start(&mut self, filter: Option<String>) -> Result<(), OutputError> {
         let device = self.device.clone();
         if device.is_none() && !self.preview {
@@ -175,14 +151,9 @@ impl Output {
         let loglevel = std::env::var("CDC_FFMPEG_LOGLEVEL").unwrap_or_else(|_| "error".into());
         let mut cmd = Command::new(&self.ffmpeg);
         cmd.args(["-hide_banner", "-loglevel", &loglevel])
-            // Sem `-fflags nobuffer`: com o H.264 de um MediaCodec ele fazia o ffmpeg perder
-            // cerca de 30% dos frames (76 de 106 num trecho real) e, ao vivo, quase todos.
             .args(["-flags", "low_delay"])
-            // H.264 cru em pipe: sem limitar a sondagem, o ffmpeg espera bytes demais (ou o
-            // fim da entrada) antes de abrir a saída. O fluxo já começa em SPS/PPS.
             .args(["-probesize", "100000", "-analyzeduration", "0"])
             .args(["-f", "h264", "-framerate", "30", "-i", "pipe:0"]);
-        // Um grafo só: a imagem girada vai à webcam virtual (`[a]`) e, reduzida, à prévia (`[p]`).
         let base = filter.clone().unwrap_or_else(|| "null".into());
         let reduzir = format!("fps={PREVIEW_FPS},scale={PREVIEW_WIDTH}:-2");
         let grafo = match (&device, self.preview) {
@@ -228,7 +199,6 @@ impl Output {
                         break;
                     }
                     for quadro in splitter.push(&chunk[..n]) {
-                        // Fila cheia: a interface está atrasada; este quadro é descartado.
                         let _ = tx.try_send(quadro);
                     }
                 }

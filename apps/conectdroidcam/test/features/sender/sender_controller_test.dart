@@ -20,7 +20,6 @@ void main() {
       overrides: [senderPlatformProvider.overrideWithValue(platform)],
     );
     addTearDown(container.dispose);
-    // Mantém o provider vivo durante o teste.
     container.listen(senderControllerProvider, (_, _) {});
   });
 

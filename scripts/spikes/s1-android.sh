@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Spike S1: celular Android -> TCP -> receptor de teste -> dispositivo V4L2.
-#
-# Conecta ao servidor do app no celular, escreve o vídeo no dispositivo e lê o
-# dispositivo de volta para provar o que realmente saiu (resolução e FPS).
-#
-# Uso: scripts/spikes/s1-android.sh <host:porta> <dispositivo> [segundos]
-# Ex.:  scripts/spikes/s1-android.sh 192.168.0.7:47821 /dev/video10 20
 set -euo pipefail
 
 ADDR="${1:?informe host:porta do celular, ex.: 192.168.0.7:47821}"
@@ -25,7 +18,6 @@ RECEPTOR=$!
 sleep 4
 
 echo "== lendo ${DEV} de volta"
-# O leitor trava se nenhum frame chegar ao dispositivo; o prazo evita prender o script.
 timeout -s KILL 15 ffmpeg -hide_banner -f v4l2 -i "$DEV" -t 5 -f null - 2>&1 \
   | tr '\r' '\n' | grep -E 'Stream #|frame=|rror' | tail -3 || true
 

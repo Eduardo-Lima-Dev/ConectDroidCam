@@ -5,27 +5,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/sender_platform.dart';
 import '../domain/sender_models.dart';
 
-/// Em que ponto do fluxo o emissor está.
 enum SenderPhase {
-  /// Ainda não perguntamos nada ao sistema.
   initial,
 
-  /// Falta a permissão de câmera.
   needsPermission,
 
-  /// O usuário negou. Só dá para continuar pelas configurações do sistema.
   permissionDenied,
 
-  /// Abrindo a câmera.
   starting,
 
-  /// Prévia ativa, sem transmitir.
   ready,
 
-  /// Transmissão ligada (com ou sem cliente conectado).
   streaming,
 
-  /// Falha; veja [SenderState.error].
   failed,
 }
 
@@ -56,43 +48,32 @@ class SenderState {
   final SenderCapabilities capabilities;
   final VideoMode selected;
 
-  /// FPS escolhido pelo usuário. Pode ser mudado com a transmissão ligada.
   final int selectedFps;
   final List<LocalAddress> addresses;
   final StreamInfo? stream;
 
-  /// Endereço do computador conectado, ou `null` se ninguém está conectado.
   final String? clientPeer;
 
-  /// FPS medido no envio, que pode diferir do escolhido.
   final double measuredFps;
   final double bitrateKbps;
   final int dropped;
 
-  /// Falha que interrompeu o emissor.
   final String? error;
 
-  /// Aviso que não interrompe nada, como um FPS que o aparelho recusou.
   final String? notice;
 
-  /// Nome com que o celular aparece na rede para o computador, quando já foi anunciado.
   final String? visibleAs;
 
-  /// Por que o anúncio na rede falhou. O computador ainda conecta pelo endereço.
   final String? visibilityError;
 
-  /// Uma operação assíncrona está em andamento; os botões ficam desativados.
   final bool busy;
 
-  /// Computador pedindo pareamento, esperando o usuário conferir o código.
   final PairingRequestEvent? pairing;
 
-  /// Computadores que o usuário aprovou.
   final List<PairedComputer> pairedComputers;
 
   bool get isStreaming => phase == SenderPhase.streaming;
 
-  /// Primeiro endereço de rede local, para mostrar ao usuário.
   LocalAddress? get lanAddress {
     for (final address in addresses) {
       if (address.isLan) return address;
@@ -100,7 +81,6 @@ class SenderState {
     return addresses.isEmpty ? null : addresses.first;
   }
 
-  /// Dá para iniciar a transmissão com a resolução escolhida?
   bool get canStart => capabilities.find(selected)?.available ?? false;
 
   SenderState copyWith({
@@ -162,17 +142,14 @@ class SenderController extends Notifier<SenderState> {
 
   @override
   SenderState build() {
-    // Guardada aqui porque o Riverpod não deixa usar `ref` dentro de `onDispose`.
     final platform = _platform = ref.read(senderPlatformProvider);
     ref.onDispose(() {
       _events?.cancel();
-      // Libera a câmera ao sair; ignora falhas porque o app está fechando.
       unawaited(platform.stopPreview().catchError((Object _) {}));
     });
     return const SenderState();
   }
 
-  /// Pede a permissão (se preciso) e abre a prévia.
   Future<void> start() async {
     if (state.busy || state.phase == SenderPhase.starting) return;
     state = state.copyWith(
@@ -201,7 +178,6 @@ class SenderController extends Notifier<SenderState> {
       final paired = await _platform.listPaired();
       _listen();
 
-      // Mantém a escolha atual se ainda valer; senão, a primeira principal disponível.
       final selected = _pickMode(capabilities, state.selected);
       state = state.copyWith(
         phase: SenderPhase.ready,
@@ -218,7 +194,6 @@ class SenderController extends Notifier<SenderState> {
     }
   }
 
-  /// O usuário comparou o código com o do computador.
   Future<void> confirmPairing(bool accept) async {
     if (state.pairing == null) return;
     state = state.copyWith(pairing: () => null);
@@ -229,7 +204,6 @@ class SenderController extends Notifier<SenderState> {
     }
   }
 
-  /// Remove um computador pareado; ele terá que parear de novo.
   Future<void> unpair(String fingerprint) async {
     try {
       await _platform.unpair(fingerprint);
@@ -260,7 +234,6 @@ class SenderController extends Notifier<SenderState> {
     );
   }
 
-  /// Escolhe o FPS. Com a transmissão ligada, aplica na hora.
   Future<void> selectFps(int fps) async {
     if (state.busy || fps == state.selectedFps) return;
     if (!state.capabilities.fpsFor(state.selected).contains(fps)) return;
@@ -274,14 +247,10 @@ class SenderController extends Notifier<SenderState> {
       await _platform.setFps(fps);
       state = state.copyWith(selectedFps: fps, busy: false);
     } on SenderException catch (e) {
-      // Falhar em trocar o FPS não derruba a transmissão.
       state = state.copyWith(busy: false, notice: () => e.message);
     }
   }
 
-  /// Troca entre a câmera frontal e a traseira. Com a transmissão ligada ela continua: o
-  /// vídeo só para por cerca de um segundo. Se a câmera nova não servir (por exemplo, não
-  /// oferece a resolução em uso), a troca é recusada e nada muda.
   Future<void> switchCamera() async {
     final current = state.preview;
     if (state.busy || current == null || !current.canSwitch) return;
@@ -363,7 +332,6 @@ class SenderController extends Notifier<SenderState> {
           );
         }
       case RemoteStreamEvent(:final streaming, :final stream):
-        // O computador mandou: o estado daqui acompanha.
         if (streaming && stream != null) {
           state = state.copyWith(
             phase: SenderPhase.streaming,
@@ -405,7 +373,6 @@ class SenderController extends Notifier<SenderState> {
           visibilityError: () => registered ? null : error,
         );
       case ErrorEvent(:final message):
-        // O código nativo já parou tudo; a interface só reflete o estado.
         _fail(message);
     }
   }
@@ -416,7 +383,6 @@ class SenderController extends Notifier<SenderState> {
     } on SenderException catch (_) {}
   }
 
-  /// Relê o que a câmera em uso oferece, depois de ela mudar.
   Future<void> _refreshModes() async {
     try {
       final capabilities = await _platform.listModes();

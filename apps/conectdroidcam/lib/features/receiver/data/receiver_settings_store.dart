@@ -3,13 +3,11 @@ import 'dart:io';
 
 import '../domain/receiver_models.dart';
 
-/// Guarda as configurações do receptor entre execuções.
 abstract interface class ReceiverSettingsStore {
   Future<ReceiverSettings> load();
   Future<void> save(ReceiverSettings settings);
 }
 
-/// Um arquivo JSON em `$XDG_CONFIG_HOME/conectdroidcam/receptor.json` (ou `~/.config/...`).
 class FileReceiverSettingsStore implements ReceiverSettingsStore {
   FileReceiverSettingsStore({File? file}) : _file = file ?? _defaultFile();
 
@@ -54,7 +52,6 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
         ),
       );
     } on Object {
-      // Arquivo corrompido ou ilegível: começa do zero, sem travar o app.
       return const ReceiverSettings();
     }
   }
@@ -73,7 +70,7 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
         }),
       );
     } on Object {
-      // Não conseguir gravar não pode derrubar a conexão.
+      return;
     }
   }
 }

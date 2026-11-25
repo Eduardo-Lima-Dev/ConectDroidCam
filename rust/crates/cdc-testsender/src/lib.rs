@@ -1,9 +1,3 @@
-//! Emissor simulado: age como o celular (servidor TCP que fala o protocolo v1)
-//! para que o desktop possa ser testado sem aparelho.
-//!
-//! O vídeo vem de um `ffmpeg` com padrão de teste. Não há TLS aqui: esta fase
-//! valida só o formato dos frames e o fluxo de mídia.
-
 pub mod annexb;
 
 use std::io::{self, BufWriter, Read, Write};
@@ -34,18 +28,12 @@ pub enum SenderError {
     Io(#[from] io::Error),
 }
 
-/// Parâmetros de uma sessão de teste.
 #[derive(Debug, Clone)]
 pub struct Options {
     pub profile: VideoProfile,
     pub seconds: u32,
     pub ffmpeg: String,
-    /// Simula um celular em pé: os quadros saem na orientação do sensor (sempre horizontal)
-    /// e o emissor anuncia quantos graus, no sentido horário, eles precisam girar para
-    /// ficar em pé (0, 90, 180 ou 270).
     pub rotation: u32,
-    /// Simula girar o celular no meio da sessão: depois de tantos segundos, passa a ter
-    /// esta rotação e envia um novo `profile.actual`.
     pub rotate_after: Option<(u32, u32)>,
 }
 
@@ -61,16 +49,12 @@ impl Options {
     }
 }
 
-/// O que foi enviado, para o chamador conferir.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Summary {
     pub video_frames: u64,
     pub keyframes: u64,
 }
 
-/// Atende um cliente: envia `hello`, `profile.actual`, a configuração e os frames.
-///
-/// Termina quando o tempo acaba ou quando o cliente fecha a conexão.
 pub fn serve_connection(stream: TcpStream, options: &Options) -> Result<Summary, SenderError> {
     stream.set_nodelay(true)?;
     let mut out = BufWriter::new(stream);
@@ -88,8 +72,6 @@ pub fn serve_connection(stream: TcpStream, options: &Options) -> Result<Summary,
     send_profile(&mut out, width, height, bitrate, options.rotation)?;
     out.flush()?;
 
-    // Drena o que o cliente enviar. Fechar um socket com dados não lidos faz o TCP
-    // responder com RST, e o cliente perderia os últimos frames.
     let (drained_tx, drained_rx) = mpsc::channel();
     let drain = {
         let mut input = out.get_ref().try_clone()?;
@@ -101,8 +83,6 @@ pub fn serve_connection(stream: TcpStream, options: &Options) -> Result<Summary,
 
     let result = stream_segments(&mut out, options, width, height, bitrate);
 
-    // Fechamento gracioso: encerra a escrita e dá até 2 s para o cliente fechar. Passado
-    // o prazo, fecha tudo à força, o que também desbloqueia a thread que lê.
     let _ = out.flush();
     let socket = out.get_ref();
     let _ = socket.shutdown(Shutdown::Write);
@@ -131,8 +111,6 @@ fn send_profile<W: Write>(
     Ok(())
 }
 
-/// Filtro que desfaz a rotação anunciada: o quadro do "sensor" é a cena em pé girada no
-/// sentido contrário ao que o receptor vai girar.
 fn sensor_filter(rotation: u32) -> Option<&'static str> {
     match rotation {
         90 => Some("transpose=2"),
@@ -151,7 +129,6 @@ fn spawn_ffmpeg(
     seconds: u32,
 ) -> Result<Child, SenderError> {
     let rate = format!("{bitrate}k");
-    // A cena em pé tem as dimensões trocadas quando a rotação é de 90 ou 270 graus.
     let (cena_w, cena_h) = if !rotation.is_multiple_of(180) {
         (height, width)
     } else {
@@ -189,12 +166,10 @@ fn spawn_ffmpeg(
     .map_err(SenderError::Ffmpeg)
 }
 
-/// Estado que atravessa os trechos de uma sessão (antes e depois de girar o celular).
 #[derive(Default)]
 struct Shared {
     summary: Summary,
     config_sent: bool,
-    /// Início do relógio de envio: o primeiro frame fixa o ritmo dos seguintes.
     epoch: Option<Instant>,
 }
 
@@ -239,7 +214,6 @@ fn stream_segments<W: Write>(
     Ok(shared.summary)
 }
 
-/// Envia um trecho. Devolve `false` se o cliente saiu no meio.
 #[allow(clippy::too_many_arguments)]
 fn stream_segment<W: Write>(
     out: &mut W,
@@ -266,15 +240,12 @@ fn stream_video<W: Write>(
     let Some(mut stdout) = child.stdout.take() else {
         return Err(SenderError::Io(io::Error::other("ffmpeg sem stdout")));
     };
-    // Um divisor por trecho: o AUD sintético que fecha a última unidade não pode vazar para
-    // o trecho seguinte como uma unidade vazia.
     let mut splitter = AccessUnitSplitter::new();
     let mut chunk = vec![0u8; 64 * 1024];
 
     loop {
         let read = stdout.read(&mut chunk)?;
         let units = if read == 0 {
-            // Fim do ffmpeg: fecha a última unidade com um AUD sintético.
             splitter.push(&[0, 0, 0, 1, 0x09, 0xf0])
         } else {
             splitter.push(&chunk[..read])
@@ -288,8 +259,6 @@ fn stream_video<W: Write>(
             }
             let keyframe = is_keyframe(&unit);
             let pts = shared.summary.video_frames * 1_000_000 / u64::from(FPS);
-            // O `-re` do ffmpeg não limita a fonte lavfi, então o ritmo de tempo real é feito aqui:
-            // cada frame só sai no instante do seu pts, como um celular de verdade.
             let target =
                 *shared.epoch.get_or_insert_with(Instant::now) + Duration::from_micros(pts);
             if let Some(wait) = target.checked_duration_since(Instant::now()) {
@@ -332,10 +301,6 @@ fn is_disconnect_io(error: &io::Error) -> bool {
     )
 }
 
-// --- Celular controlável pelo computador ----------------------------------------------
-
-/// Escreve no socket só frames completos: o que se acumula aqui sai de uma vez no `flush`,
-/// com o `Mutex` preso, e nunca se mistura com uma mensagem de controle de outra thread.
 struct SharedWriter {
     socket: Arc<Mutex<TcpStream>>,
     pending: Vec<u8>,
@@ -367,12 +332,10 @@ impl Write for SharedWriter {
     }
 }
 
-/// Estado do celular simulado que o computador controla.
 struct Phone {
     socket: Arc<Mutex<TcpStream>>,
     options: Options,
     front: bool,
-    /// Transmissão em andamento: a flag que a para e a thread que a executa.
     running: Option<(Arc<AtomicBool>, thread::JoinHandle<()>)>,
     fps: u32,
     size: (u32, u32),
@@ -461,7 +424,6 @@ impl Phone {
             pending: Vec::new(),
             stop: Arc::clone(&stop),
         };
-        // O estado muda antes do vídeo, para o computador reiniciar a saída no tamanho certo.
         let handle = {
             let options = Options {
                 seconds: 3600,
@@ -492,9 +454,6 @@ impl Phone {
     }
 }
 
-/// Atende um cliente como um celular que **espera ordens**: só transmite depois de
-/// `stream.start`, para quando recebe `stream.stop` e obedece `fps.set` e `camera.switch`.
-/// Termina quando o cliente fecha a conexão ou manda `session.stop`.
 pub fn serve_controllable(stream: TcpStream, options: &Options) -> Result<(), SenderError> {
     stream.set_nodelay(true)?;
     let mut input = stream.try_clone()?;
@@ -545,16 +504,10 @@ pub fn serve_controllable(stream: TcpStream, options: &Options) -> Result<(), Se
     resultado
 }
 
-// --- Segurança: TLS e pareamento como o celular faz --------------------------------------
-
-/// Como o celular simulado trata computadores: TLS com identidade própria e pareamento.
 #[derive(Clone)]
 pub struct PhoneAuth {
     pub identity: cdc_security::Identity,
-    /// Impressões digitais dos computadores pareados.
     pub paired: Arc<Mutex<Vec<String>>>,
-    /// Chamada com o código de 6 dígitos quando um computador novo pede pareamento; devolve
-    /// se o "usuário do celular" confirma.
     pub confirm: Arc<dyn Fn(&str) -> bool + Send + Sync>,
 }
 
@@ -571,9 +524,6 @@ impl PhoneAuth {
     }
 }
 
-/// Aceita o TLS e garante que o computador está pareado, pareando-o se for novo. Devolve a
-/// conexão em texto claro, pronta para `serve_connection` ou `serve_controllable`, ou `None`
-/// se o pareamento não aconteceu.
 pub fn accept_client(tcp: TcpStream, auth: &PhoneAuth) -> Result<Option<TcpStream>, SenderError> {
     let link = cdc_security::accept_secure(tcp, &auth.identity)
         .map_err(|e| SenderError::Io(io::Error::other(e.to_string())))?;
@@ -600,7 +550,6 @@ pub fn accept_client(tcp: TcpStream, auth: &PhoneAuth) -> Result<Option<TcpStrea
             message: "pareamento necessário".into(),
         },
     )?;
-    // Espera o pedido de pareamento, ignorando o que mais o computador mandar.
     let nonce = loop {
         match Frame::read_from(&mut stream)? {
             None => return Ok(None),
@@ -623,7 +572,6 @@ pub fn accept_client(tcp: TcpStream, auth: &PhoneAuth) -> Result<Option<TcpStrea
         )?;
         return Ok(None);
     }
-    // Falta a confirmação do computador.
     loop {
         match Frame::read_from(&mut stream)? {
             None => return Ok(None),

@@ -9,10 +9,6 @@ import 'package:conectdroidcam/features/receiver/data/rust_receiver_platform.dar
 import 'package:conectdroidcam/features/receiver/domain/receiver_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// Usa a ponte de verdade: carrega o núcleo em Rust, acha o emissor simulado pela rede (mDNS)
-// e recebe vídeo dele. Precisa de `cargo build -p cdc-ffi -p cdc-testsender` e do ffmpeg;
-// sem isso, os testes são pulados, não falham.
-
 final _rust = Directory('../../rust/target/debug').absolute.path;
 final _lib = File('$_rust/libcdc_ffi.so');
 final _sender = File('$_rust/cdc-testsender');
@@ -27,7 +23,6 @@ String? _pular() {
   return null;
 }
 
-/// Conecta como o app: se o celular pedir pareamento, o "usuário" confirma o código.
 Stream<ReceiverUpdate> _connect(
   RustReceiverPlatform platform, {
   required String address,
@@ -74,7 +69,7 @@ void main() {
       final name = 'Teste Dart $pid';
       final sender = await Process.start(_sender.path, [
         '--bind',
-        '0.0.0.0', // como o celular: escuta em todas as interfaces
+        '0.0.0.0',
         '--auto-pair',
         '--port',
         '$port',
@@ -86,11 +81,9 @@ void main() {
         name,
       ]);
       addTearDown(sender.kill);
-      // Sem ler o stderr o processo pode travar quando o pipe enche.
       unawaited(sender.stderr.transform(utf8.decoder).drain());
       unawaited(sender.stdout.drain());
 
-      // 1. Descoberta por mDNS.
       final found = Completer<Phone>();
       final sub = platform.discover().listen((change) {
         final phone = change.phone;
@@ -107,7 +100,6 @@ void main() {
       await platform.stopDiscovery();
       expect(phone.address, endsWith(':$port'));
 
-      // 2. Conexão e recebimento. O dispositivo "null" decodifica e descarta o vídeo.
       final updates = await _connect(
         platform,
         address: phone.address,
@@ -132,9 +124,7 @@ void main() {
         (1280, 720, 90),
       );
       final output = updates.whereType<OutputUpdate>().first.video;
-      // Celular em pé e formato automático: a saída fica vertical, sem barras.
       expect((output.width, output.height, output.rotation), (1080, 1920, 90));
-      // A prévia chega como JPEG válido (começa em FFD8 e termina em FFD9).
       final previews = updates.whereType<PreviewUpdate>().toList();
       expect(previews.length, greaterThan(10));
       expect(previews.first.jpeg.sublist(0, 2), [0xFF, 0xD8]);

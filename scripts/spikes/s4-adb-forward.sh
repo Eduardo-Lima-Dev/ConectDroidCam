@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# Spike S4 (Android): o mesmo fluxo de vídeo, mas por um túnel do `adb forward`.
-#
-# O celular é o servidor, então basta o `adb` encaminhar uma porta do computador para a
-# porta 47821 do app. O receptor conecta em 127.0.0.1 e nem sabe se o caminho é Wi-Fi ou USB.
-#
-# Para provar o USB de verdade, ligue o celular por cabo e use -d (a opção do adb que escolhe
-# o dispositivo USB). Com a depuração por Wi-Fi ligada ao mesmo tempo, o adb enxerga dois
-# transportes do mesmo aparelho e é preciso escolher um.
-#
-# Uso: scripts/spikes/s4-adb-forward.sh [-d | -e | -s SERIAL] [segundos]
 set -euo pipefail
 
 ADB_ARGS=()

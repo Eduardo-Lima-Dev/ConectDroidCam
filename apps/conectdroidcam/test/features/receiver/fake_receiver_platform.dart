@@ -4,12 +4,10 @@ import 'package:conectdroidcam/features/receiver/data/receiver_platform.dart';
 import 'package:conectdroidcam/features/receiver/data/receiver_settings_store.dart';
 import 'package:conectdroidcam/features/receiver/domain/receiver_models.dart';
 
-/// Núcleo do receptor de mentira: sem Rust, sem rede e sem webcam virtual.
 class FakeReceiverPlatform implements ReceiverPlatform {
   Object? initError;
   bool ffmpeg = true;
 
-  /// A família completa, como o script de instalação a cria, mais um dispositivo comum.
   List<VideoDevice> devices = const [
     VideoDevice(path: '/dev/video0', name: 'Dummy video device (0x0000)'),
     VideoDevice(path: '/dev/video10', name: 'ConectDroidCam FHD Horizontal'),
@@ -24,7 +22,6 @@ class FakeReceiverPlatform implements ReceiverPlatform {
   int disconnects = 0;
   int connects = 0;
 
-  /// Quantas vezes a busca foi (re)iniciada.
   int discoveries = 0;
   String? lastAddress;
   String? lastDevice;
@@ -34,7 +31,6 @@ class FakeReceiverPlatform implements ReceiverPlatform {
   Object? discoverError;
   String? lastPinned;
 
-  /// Respostas do usuário ao código de pareamento, em ordem.
   final List<bool> pairingAnswers = [];
 
   final _phones = StreamController<PhoneChange>.broadcast();
@@ -88,11 +84,8 @@ class FakeReceiverPlatform implements ReceiverPlatform {
     send(const EndedUpdate());
   }
 
-  /// Comandos enviados ao celular, em ordem: `start 1920x1080@30`, `stop`, `fps 24`,
-  /// `camera front|back|toggle`.
   final List<String> commands = [];
 
-  /// Se não for `null`, todo comando falha com este motivo.
   String? commandError;
 
   Future<String?> _command(String text) async {
@@ -135,7 +128,6 @@ class FakeReceiverPlatform implements ReceiverPlatform {
   Future<String> computerName() async => 'pc-teste';
 }
 
-/// Configurações em memória, sem tocar no disco.
 class FakeSettingsStore implements ReceiverSettingsStore {
   FakeSettingsStore([this.settings = const ReceiverSettings()]);
 

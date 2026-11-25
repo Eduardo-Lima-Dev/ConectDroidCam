@@ -1,15 +1,5 @@
 name: Build e release
 
-# Gera o pacote .flatpak do app Linux e o APK do Android a cada push na main (e a cada PR para a
-# main). Num push na main também roda o CI (testes) e, só depois de CI, APK e Flatpak passarem:
-#   - cria uma release automática (build-N) com os dois arquivos e as notas tiradas dos commits
-#     desde a release anterior; o N é também o versionCode do APK, que o atualizador do app compara;
-#   - publica no GitHub Pages o repositório Flatpak assinado, de onde o app instalado se atualiza.
-# Ao criar uma tag v*, o .flatpak vai para a release dessa tag.
-#
-# Segredos: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS e
-# ANDROID_KEY_PASSWORD (chave de release do Android; sem ela o APK sai com a chave de debug) e
-# FLATPAK_GPG_PRIVATE_KEY e FLATPAK_GPG_KEY_ID (assinatura do repositório Flatpak).
 on:
   push:
     branches: [main]
@@ -28,11 +18,9 @@ concurrency:
 env:
   APP_ID: io.github.eduardo_lima_dev.ConectDroidCam
   BUNDLE: ConectDroidCam.flatpak
-  # Endereço do repositório Flatpak no GitHub Pages.
   PAGES_URL: https://eduardo-lima-dev.github.io/ConectDroidCam
 
 jobs:
-  # Nos PRs o ci.yml roda sozinho; aqui ele só roda num push, para a release esperar os testes.
   ci:
     name: CI (testes)
     if: github.event_name == 'push'
@@ -73,7 +61,6 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           flutter pub get
-          # O número do build (versionCode) é o da execução: o mesmo N da release build-N.
           flutter build apk --release --build-number=${{ github.run_number }}
       - name: Apagar a chave do runner
         if: always()
@@ -91,7 +78,7 @@ jobs:
     name: Gerar o .flatpak
     runs-on: ubuntu-24.04
     permissions:
-      contents: write # só usado para anexar o arquivo à release, em tags v*
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -124,8 +111,6 @@ jobs:
         working-directory: apps/conectdroidcam
         run: |
           flutter pub get
-          # O app do computador compara este número com as releases para avisar de versão
-          # nova (é o mesmo N da release build-N).
           flutter build linux --release \
             --build-number=${{ github.run_number }} \
             --dart-define=CDC_BUILD=${{ github.run_number }}
@@ -149,14 +134,11 @@ jobs:
 
       - name: Montar o Flatpak
         run: |
-          # O ramo "stable" é o que o repositório publica e o que os usuários acompanham.
           flatpak-builder --user --force-clean --disable-rofiles-fuse \
             --install-deps-from=flathub --default-branch=stable $GPG_ARGS \
             --repo=dist/repo dist/build flatpak/${APP_ID}.yml
           flatpak build-update-repo $GPG_ARGS --prune --generate-static-deltas \
             --title="ConectDroidCam" --default-branch=stable dist/repo
-          # O bundle já sabe de onde vêm as atualizações: quem o instala passa a recebê-las
-          # do repositório publicado, e o runtime vem do Flathub.
           BUNDLE_ARGS=""
           if [ -n "$GPG_ARGS" ]; then
             BUNDLE_ARGS="--repo-url=${PAGES_URL}/repo/ --gpg-keys=flatpak/conectdroidcam-repo.gpg"
@@ -213,7 +195,6 @@ jobs:
       - name: Renomear os arquivos com a versão do build
         run: |
           ls -l dist/arquivos
-          # Cada artefato traz exatamente um arquivo; o nome dele dentro do artefato não importa.
           mv dist/arquivos/*.apk "dist/arquivos/ConectDroidCam-${GITHUB_RUN_NUMBER}.apk"
           mv dist/arquivos/*.flatpak "dist/arquivos/ConectDroidCam-${GITHUB_RUN_NUMBER}.flatpak"
       - name: Criar a release com os commits desde a anterior
