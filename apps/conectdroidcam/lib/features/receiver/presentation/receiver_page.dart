@@ -1,10 +1,12 @@
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/brand_logo.dart';
+import '../../../shared/widgets/pairing_countdown.dart';
+import '../../../shared/widgets/status_colors.dart';
 import '../application/receiver_controller.dart';
 import '../domain/receiver_models.dart';
 import '../../update/application/desktop_update_controller.dart';
@@ -92,6 +94,7 @@ class _Content extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final controller = ref.read(receiverControllerProvider.notifier);
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -122,6 +125,7 @@ class _Content extends ConsumerWidget {
             text: state.error!,
             color: theme.colorScheme.errorContainer,
             onColor: theme.colorScheme.onErrorContainer,
+            onClose: controller.dismissError,
           ),
         if (state.notice != null)
           _Banner(
@@ -129,6 +133,7 @@ class _Content extends ConsumerWidget {
             text: state.notice!,
             color: theme.colorScheme.secondaryContainer,
             onColor: theme.colorScheme.onSecondaryContainer,
+            onClose: controller.dismissNotice,
           ),
         if (!state.ffmpegOk)
           _Banner(
@@ -168,12 +173,14 @@ class _Banner extends StatelessWidget {
     required this.text,
     required this.color,
     required this.onColor,
+    this.onClose,
   });
 
   final IconData icon;
   final String text;
   final Color color;
   final Color onColor;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -194,6 +201,17 @@ class _Banner extends StatelessWidget {
               Expanded(
                 child: SelectableText(text, style: TextStyle(color: onColor)),
               ),
+              if (onClose != null)
+                IconButton(
+                  tooltip: 'Fechar',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  iconSize: 18,
+                  color: onColor,
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close),
+                ),
             ],
           ),
         ),
@@ -236,7 +254,12 @@ class _PhoneCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return _SectionCard(
-      title: state.isBusy ? 'Celular conectado' : 'Celular',
+      title: switch (state.phase) {
+        ReceiverPhase.connecting => 'Conectando ao celular',
+        ReceiverPhase.reconnecting => 'Reconectando ao celular',
+        ReceiverPhase.connected => 'Celular conectado',
+        _ => 'Celular',
+      },
       child: state.isBusy ? _Connected(state: state) : _Finder(state: state),
     );
   }
@@ -319,16 +342,12 @@ class _FinderState extends ConsumerState<_Finder> {
               icon: const Icon(Icons.refresh),
               label: const Text('Procurar de novo'),
             ),
-            if (widget.state.trustedPhones.isNotEmpty)
-              TextButton.icon(
-                onPressed: controller.forgetPhones,
-                icon: const Icon(Icons.delete_outline),
-                label: Text(
-                  'Esquecer celulares pareados (${widget.state.trustedPhones.length})',
-                ),
-              ),
           ],
         ),
+        if (widget.state.trustedPhones.isNotEmpty) ...[
+          const Divider(height: 24),
+          _PairedPhones(state: widget.state),
+        ],
         const Divider(height: 24),
         Text(
           'Ou digite o endereço mostrado no celular',
@@ -359,6 +378,101 @@ class _FinderState extends ConsumerState<_Finder> {
       ],
     );
   }
+}
+
+class _PairedPhones extends ConsumerWidget {
+  const _PairedPhones({required this.state});
+
+  final ReceiverState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final controller = ref.read(receiverControllerProvider.notifier);
+    String label(String key) => pairedPhoneLabel(key, state.phoneNames);
+    final keys = state.trustedPhones.toList()
+      ..sort((a, b) => label(a).compareTo(label(b)));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Celulares pareados', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 4),
+        for (final key in keys)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.smartphone_outlined),
+            title: Text(label(key)),
+            subtitle: switch (state.fingerprints[key]) {
+              final print? => Text('Certificado ${_shortFingerprint(print)}'),
+              null => null,
+            },
+            trailing: IconButton(
+              tooltip: 'Remover pareamento',
+              icon: const Icon(Icons.link_off),
+              onPressed: () async {
+                final ok = await _confirm(
+                  context,
+                  title: 'Remover o pareamento com ${label(key)}?',
+                  body:
+                      'Este computador deixa de aceitar o celular. Para usar de novo, '
+                      'será preciso parear outra vez, conferindo o código nas duas telas.',
+                  action: 'Remover',
+                );
+                if (ok) await controller.unpair(key);
+              },
+            ),
+          ),
+        if (keys.length > 1)
+          TextButton.icon(
+            onPressed: () async {
+              final ok = await _confirm(
+                context,
+                title: 'Esquecer todos os celulares pareados?',
+                body:
+                    'Os ${keys.length} celulares deixam de ser aceitos. Para usar '
+                    'qualquer um deles de novo, será preciso parear outra vez.',
+                action: 'Esquecer todos',
+              );
+              if (ok) await controller.forgetPhones();
+            },
+            icon: const Icon(Icons.delete_outline),
+            label: Text('Esquecer todos (${keys.length})'),
+          ),
+      ],
+    );
+  }
+}
+
+String _shortFingerprint(String print) => print
+    .substring(0, print.length < 16 ? print.length : 16)
+    .replaceAllMapped(RegExp('.{4}'), (m) => '${m[0]} ')
+    .trim();
+
+Future<bool> _confirm(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String action,
+}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(body),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(action),
+        ),
+      ],
+    ),
+  );
+  return ok ?? false;
 }
 
 class _PairingCard extends ConsumerWidget {
@@ -405,6 +519,17 @@ class _PairingCard extends ConsumerWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            Center(
+              child: PairingCountdown(
+                key: ValueKey(prompt.code),
+                expiredText:
+                    'O código expirou. Conecte de novo para gerar outro.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
             Wrap(
               spacing: 12,
@@ -438,9 +563,7 @@ class _Connected extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final controller = ref.read(receiverControllerProvider.notifier);
-    final connecting = state.phase == ReceiverPhase.connecting;
     final reconnecting = state.phase == ReceiverPhase.reconnecting;
-    final attempts = ref.read(reconnectDelaysProvider).length;
     final incoming = state.incoming;
     final outgoing = state.outgoing;
     final stats = state.stats;
@@ -461,31 +584,6 @@ class _Connected extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(
-              Icons.circle,
-              size: 10,
-              color: connecting || reconnecting
-                  ? Colors.amberAccent
-                  : Colors.greenAccent,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                reconnecting
-                    ? 'Conexão perdida. Reconectando a '
-                          '${state.phoneName ?? state.connectedTo}…'
-                          '${state.reconnectAttempt > 0 ? ' (tentativa ${state.reconnectAttempt} de $attempts)' : ''}'
-                    : connecting
-                    ? 'Conectando a ${state.connectedTo}…'
-                    : 'Conectado a ${state.phoneName ?? state.connectedTo}',
-                style: theme.textTheme.titleSmall,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
         _PreviewBox(state: state),
         if (lines.isNotEmpty) const SizedBox(height: 12),
         for (final line in lines) Text(line, style: theme.textTheme.bodyMedium),
@@ -690,8 +788,15 @@ class _OutputCard extends ConsumerWidget {
               ),
               IconButton(
                 tooltip: 'Copiar o comando de instalação',
-                onPressed: () =>
-                    Clipboard.setData(ClipboardData(text: setupCommand)),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: setupCommand));
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(
+                      const SnackBar(content: Text('Comando copiado.')),
+                    );
+                },
                 icon: const Icon(Icons.content_copy),
               ),
             ],
@@ -772,29 +877,31 @@ class _OutputCard extends ConsumerWidget {
   }
 }
 
-class _StatusBar extends StatelessWidget {
+class _StatusBar extends ConsumerWidget {
   const _StatusBar({required this.state});
 
   final ReceiverState state;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final attempts = ref.read(reconnectDelaysProvider).length;
     final (icon, text, color) = switch (state.phase) {
       ReceiverPhase.connected => (
         Icons.check_circle,
         'Conectado a ${state.phoneName ?? state.connectedTo}',
-        Colors.greenAccent,
+        StatusColors.ok(context),
       ),
       ReceiverPhase.connecting => (
         Icons.sync,
         'Conectando a ${state.phoneName ?? state.connectedTo}…',
-        Colors.amberAccent,
+        StatusColors.warning(context),
       ),
       ReceiverPhase.reconnecting => (
         Icons.sync_problem,
-        'Conexão perdida. Reconectando a ${state.phoneName ?? state.connectedTo}…',
-        Colors.amberAccent,
+        'Conexão perdida. Reconectando a ${state.phoneName ?? state.connectedTo}…'
+            '${state.reconnectAttempt > 0 ? ' (tentativa ${state.reconnectAttempt} de $attempts)' : ''}',
+        StatusColors.warning(context),
       ),
       _ when state.phones.isNotEmpty => (
         Icons.smartphone,
@@ -875,12 +982,21 @@ class _PreviewBox extends ConsumerWidget {
 double previewMaxHeight(double windowHeight) =>
     (windowHeight * 0.5).clamp(180.0, double.infinity);
 
-String virtualWebcamSetupCommand({Map<String, String>? environment}) {
+String virtualWebcamSetupCommand({
+  Map<String, String>? environment,
+  String? executable,
+  bool Function(String path)? exists,
+}) {
   final env = environment ?? Platform.environment;
   final flatpakId = env['FLATPAK_ID'];
   if (flatpakId != null && flatpakId.isNotEmpty) {
     return 'flatpak run --command=cat $flatpakId '
         '/app/share/conectdroidcam/linux-webcam-virtual.sh | sudo bash';
+  }
+  final exe = executable ?? Platform.resolvedExecutable;
+  final script = '${File(exe).parent.path}/data/linux-webcam-virtual.sh';
+  if ((exists ?? (p) => File(p).existsSync())(script)) {
+    return "sudo bash '${script.replaceAll("'", r"'\''")}'";
   }
   return 'sudo scripts/setup/linux-webcam-virtual.sh';
 }

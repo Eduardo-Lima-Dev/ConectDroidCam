@@ -36,6 +36,7 @@ class ReceiverState {
     this.autoConnect = true,
     this.trustedPhones = const {},
     this.fingerprints = const {},
+    this.phoneNames = const {},
     this.pairing,
     this.connectedTo,
     this.phoneName,
@@ -68,6 +69,8 @@ class ReceiverState {
   final Set<String> trustedPhones;
 
   final Map<String, String> fingerprints;
+
+  final Map<String, String> phoneNames;
 
   final PairingPrompt? pairing;
 
@@ -114,6 +117,7 @@ class ReceiverState {
     bool? autoConnect,
     Set<String>? trustedPhones,
     Map<String, String>? fingerprints,
+    Map<String, String>? phoneNames,
     PairingPrompt? Function()? pairing,
     String? Function()? connectedTo,
     String? Function()? phoneName,
@@ -142,6 +146,7 @@ class ReceiverState {
       autoConnect: autoConnect ?? this.autoConnect,
       trustedPhones: trustedPhones ?? this.trustedPhones,
       fingerprints: fingerprints ?? this.fingerprints,
+      phoneNames: phoneNames ?? this.phoneNames,
       pairing: pairing != null ? pairing() : this.pairing,
       connectedTo: connectedTo != null ? connectedTo() : this.connectedTo,
       phoneName: phoneName != null ? phoneName() : this.phoneName,
@@ -266,6 +271,7 @@ class ReceiverController extends Notifier<ReceiverState> {
       autoConnect: settings.autoConnect,
       trustedPhones: settings.trustedPhones,
       fingerprints: settings.fingerprints,
+      phoneNames: settings.phoneNames,
       format: settings.format,
       outputSize: settings.outputSize,
     );
@@ -399,7 +405,11 @@ class ReceiverController extends Notifier<ReceiverState> {
   }
 
   Future<void> forgetPhones() async {
-    state = state.copyWith(trustedPhones: const {}, fingerprints: const {});
+    state = state.copyWith(
+      trustedPhones: const {},
+      fingerprints: const {},
+      phoneNames: const {},
+    );
     await _saveSettings();
   }
 
@@ -408,17 +418,28 @@ class ReceiverController extends Notifier<ReceiverState> {
       autoConnect: state.autoConnect,
       trustedPhones: state.trustedPhones,
       fingerprints: state.fingerprints,
+      phoneNames: state.phoneNames,
       format: state.format,
       outputSize: state.outputSize,
     ),
   );
 
+  void dismissError() {
+    if (state.error != null) state = state.copyWith(error: () => null);
+  }
+
+  void dismissNotice() {
+    if (state.notice != null) state = state.copyWith(notice: () => null);
+  }
+
   Future<void> connect(String address, {String? name, String? id}) async {
-    final target = address.trim();
-    if (state.isBusy || target.isEmpty) return;
-    if (!_looksLikeAddress(target)) {
+    final typed = address.trim();
+    if (state.isBusy || typed.isEmpty) return;
+    final target = normalizeAddress(typed);
+    if (target == null) {
       state = state.copyWith(
-        error: () => 'Endereço inválido. Use o formato 192.168.0.7:47821.',
+        error: () =>
+            'Endereço inválido. Use o formato 192.168.0.7 ou 192.168.0.7:47821.',
       );
       return;
     }
@@ -565,13 +586,6 @@ class ReceiverController extends Notifier<ReceiverState> {
   }
 
   String _phoneKey(String address) => _connectedId ?? 'addr:$address';
-
-  bool _looksLikeAddress(String text) {
-    final i = text.lastIndexOf(':');
-    if (i <= 0 || i == text.length - 1) return false;
-    final port = int.tryParse(text.substring(i + 1));
-    return port != null && port > 0 && port < 65536;
-  }
 
   Future<void> disconnect() async {
     if (!state.isBusy) return;
@@ -749,10 +763,12 @@ class ReceiverController extends Notifier<ReceiverState> {
 
   void _rememberPairedPhone(String fingerprint) {
     final key = _phoneKey(state.connectedTo ?? '');
+    final name = state.phoneName;
     state = state.copyWith(
       pairing: () => null,
       trustedPhones: {...state.trustedPhones, key},
       fingerprints: {...state.fingerprints, key: fingerprint},
+      phoneNames: {...state.phoneNames, key: ?name},
     );
     unawaited(_saveSettings());
   }
@@ -772,6 +788,7 @@ class ReceiverController extends Notifier<ReceiverState> {
     state = state.copyWith(
       trustedPhones: {...state.trustedPhones}..remove(key),
       fingerprints: {...state.fingerprints}..remove(key),
+      phoneNames: {...state.phoneNames}..remove(key),
     );
     await _saveSettings();
   }
@@ -795,4 +812,74 @@ class ReceiverController extends Notifier<ReceiverState> {
       error: error != null ? () => error : null,
     );
   }
+}
+
+const defaultPhonePort = 47821;
+
+String? normalizeAddress(String text) {
+  final t = text.trim();
+  if (t.isEmpty) return null;
+  String host;
+  String? port;
+  if (t.startsWith('[')) {
+    final end = t.indexOf(']');
+    if (end < 0) return null;
+    host = t.substring(1, end);
+    final rest = t.substring(end + 1);
+    if (rest.isNotEmpty) {
+      if (!rest.startsWith(':')) return null;
+      port = rest.substring(1);
+    }
+    if (!_isIpv6(host)) return null;
+    host = '[$host]';
+  } else {
+    final colons = ':'.allMatches(t).length;
+    if (colons > 1) {
+      if (!_isIpv6(t)) return null;
+      host = '[$t]';
+    } else if (colons == 1) {
+      final i = t.indexOf(':');
+      host = t.substring(0, i);
+      port = t.substring(i + 1);
+      if (!_isHost(host)) return null;
+    } else {
+      host = t;
+      if (!_isHost(host)) return null;
+    }
+  }
+  final number = port == null ? defaultPhonePort : int.tryParse(port);
+  if (number == null || number <= 0 || number >= 65536) return null;
+  return '$host:$number';
+}
+
+bool _isIpv6(String text) =>
+    text.contains(':') && RegExp(r'^[0-9A-Fa-f:.]+(%[\w.-]+)?$').hasMatch(text);
+
+bool _isHost(String text) {
+  if (text.isEmpty) return false;
+  if (RegExp(r'^[\d.]+$').hasMatch(text)) {
+    final parts = text.split('.');
+    return parts.length == 4 &&
+        parts.every((p) {
+          final n = int.tryParse(p);
+          return p.isNotEmpty && n != null && n <= 255;
+        });
+  }
+  return RegExp(
+    r'^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*\.?$',
+  ).hasMatch(text);
+}
+
+String pairedPhoneLabel(String key, Map<String, String> names) {
+  final saved = names[key];
+  if (saved != null && saved.isNotEmpty) return saved;
+  if (key.startsWith('addr:')) return key.substring(5);
+  var name = key.replaceAll(r'\032', ' ');
+  final service = name.indexOf('._conectdroidcam.');
+  if (service > 0) name = name.substring(0, service);
+  const prefix = 'ConectDroidCam ';
+  if (name.startsWith(prefix) && name.length > prefix.length) {
+    name = name.substring(prefix.length);
+  }
+  return name;
 }

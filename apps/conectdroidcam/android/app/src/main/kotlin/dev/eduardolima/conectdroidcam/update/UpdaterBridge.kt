@@ -41,6 +41,9 @@ class UpdaterBridge(private val activity: Activity, engine: FlutterEngine) :
                 "downloadDir" -> result.success(downloadDir().absolutePath)
                 "enableBackgroundChecks" -> {
                     UpdateCheckWorker.schedule(activity.applicationContext)
+                    result.success(null)
+                }
+                "requestNotifications" -> {
                     requestNotificationPermission()
                     result.success(null)
                 }

@@ -144,4 +144,65 @@ void main() {
     await controller().forgetPhones();
     expect(store.settings.fingerprints, isEmpty);
   });
+
+  test('o nome do celular pareado é guardado e apagado junto', () async {
+    await iniciar();
+    await controller().connect(pixel.address, name: pixel.name, id: pixel.id);
+    platform.send(const PairedUpdate('fp-celular'));
+    await tick();
+    expect(store.settings.phoneNames, {pixel.id: pixel.name});
+
+    await controller().unpair(pixel.id);
+    expect(store.settings.phoneNames, isEmpty);
+  });
+
+  group('nome mostrado de um celular pareado', () {
+    test('usa o nome guardado', () {
+      expect(pairedPhoneLabel('k', {'k': 'Pixel 8'}), 'Pixel 8');
+    });
+
+    test('sem nome guardado, limpa o nome do serviço mDNS', () {
+      expect(
+        pairedPhoneLabel(
+          'ConectDroidCam\\0322201117SL._conectdroidcam._tcp.local.',
+          const {},
+        ),
+        '2201117SL',
+      );
+    });
+
+    test('endereço digitado mostra o endereço', () {
+      expect(
+        pairedPhoneLabel('addr:10.0.0.9:47821', const {}),
+        '10.0.0.9:47821',
+      );
+    });
+  });
+
+  group('endereço digitado', () {
+    test('completa a porta e aceita IPv6', () {
+      expect(normalizeAddress('192.168.0.7'), '192.168.0.7:47821');
+      expect(normalizeAddress(' 192.168.0.7:5000 '), '192.168.0.7:5000');
+      expect(normalizeAddress('pixel.local'), 'pixel.local:47821');
+      expect(normalizeAddress('fe80::1'), '[fe80::1]:47821');
+      expect(normalizeAddress('[fe80::1]'), '[fe80::1]:47821');
+      expect(normalizeAddress('[fe80::1%wlan0]:5000'), '[fe80::1%wlan0]:5000');
+    });
+
+    test('recusa o que não é endereço', () {
+      for (final ruim in [
+        '',
+        'a b',
+        '1.2.3',
+        '256.1.1.1',
+        '1.2.3.4:0',
+        '1.2.3.4:70000',
+        '[fe80::1',
+        '[fe80::1]x',
+        '-pixel',
+      ]) {
+        expect(normalizeAddress(ruim), isNull, reason: ruim);
+      }
+    });
+  });
 }

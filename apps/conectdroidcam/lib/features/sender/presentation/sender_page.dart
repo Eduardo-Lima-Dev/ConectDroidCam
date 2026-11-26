@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/sender_controller.dart';
 import '../../../shared/widgets/brand_logo.dart';
+import '../../../shared/widgets/pairing_countdown.dart';
+import '../../../shared/widgets/status_colors.dart';
 import '../domain/sender_models.dart';
 import '../../update/application/update_controller.dart';
 import '../../update/presentation/update_banner.dart';
@@ -17,6 +19,7 @@ class SenderPage extends ConsumerStatefulWidget {
 
 class _SenderPageState extends ConsumerState<SenderPage> {
   bool _pairingDialogOpen = false;
+  late final AppLifecycleListener _lifecycle;
 
   void _syncPairingDialog(PairingRequestEvent? prompt) {
     if (prompt != null && !_pairingDialogOpen) {
@@ -34,6 +37,9 @@ class _SenderPageState extends ConsumerState<SenderPage> {
   @override
   void initState() {
     super.initState();
+    _lifecycle = AppLifecycleListener(
+      onResume: () => ref.read(senderControllerProvider.notifier).onResumed(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final updater = ref.read(updateControllerProvider.notifier);
       ref
@@ -45,6 +51,12 @@ class _SenderPageState extends ConsumerState<SenderPage> {
   }
 
   @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final state = ref.watch(senderControllerProvider);
     final controller = ref.read(senderControllerProvider.notifier);
@@ -52,6 +64,11 @@ class _SenderPageState extends ConsumerState<SenderPage> {
       senderControllerProvider.select((s) => s.pairing),
       (_, prompt) => _syncPairingDialog(prompt),
     );
+    ref.listen(senderControllerProvider.select((s) => s.success), (_, text) {
+      if (text == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      controller.clearSuccess();
+    });
 
     return Scaffold(
       body: SafeArea(
@@ -67,10 +84,13 @@ class _SenderPageState extends ConsumerState<SenderPage> {
             icon: Icons.no_photography_outlined,
             title: 'Sem acesso à câmera',
             body:
-                'O ConectDroidCam precisa da câmera para funcionar. '
-                'Permita em Configurações › Apps › ConectDroidCam › Permissões.',
-            actionLabel: 'Tentar de novo',
-            onAction: controller.start,
+                'O ConectDroidCam precisa da câmera para funcionar. Toque em '
+                '"Abrir configurações", entre em Permissões e permita a câmera. '
+                'Ao voltar para cá, o app continua sozinho.',
+            actionLabel: 'Abrir configurações',
+            onAction: controller.openAppSettings,
+            secondaryLabel: 'Tentar de novo',
+            onSecondary: controller.start,
           ),
           SenderPhase.failed => _Message(
             icon: Icons.error_outline,
@@ -93,6 +113,8 @@ class _Message extends StatelessWidget {
     required this.body,
     this.actionLabel,
     this.onAction,
+    this.secondaryLabel,
+    this.onSecondary,
   });
 
   final IconData? icon;
@@ -100,6 +122,8 @@ class _Message extends StatelessWidget {
   final String body;
   final String? actionLabel;
   final VoidCallback? onAction;
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +160,13 @@ class _Message extends StatelessWidget {
               if (onAction != null) ...[
                 const SizedBox(height: 20),
                 FilledButton(onPressed: onAction, child: Text(actionLabel!)),
+              ],
+              if (onSecondary != null) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: onSecondary,
+                  child: Text(secondaryLabel!),
+                ),
               ],
             ],
           ),
@@ -554,6 +585,16 @@ class _PairingDialog extends ConsumerWidget {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          Center(
+            child: PairingCountdown(
+              key: ValueKey(prompt.code),
+              expiredText: 'O código expirou. Conecte de novo pelo computador.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         ],
       ),
       actions: [
@@ -603,12 +644,39 @@ class _PairedList extends ConsumerWidget {
               trailing: IconButton(
                 tooltip: 'Remover pareamento',
                 icon: const Icon(Icons.link_off),
-                onPressed: () => controller.unpair(computer.fingerprint),
+                onPressed: () async {
+                  final ok = await _confirmUnpair(context, computer.name);
+                  if (ok) await controller.unpair(computer.fingerprint);
+                },
               ),
             ),
       ],
     );
   }
+}
+
+Future<bool> _confirmUnpair(BuildContext context, String name) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Remover o pareamento com $name?'),
+      content: const Text(
+        'Este computador não vai mais ver a câmera. Para usar de novo, será '
+        'preciso parear outra vez, conferindo o código nas duas telas.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Remover'),
+        ),
+      ],
+    ),
+  );
+  return ok ?? false;
 }
 
 class _StatusLine extends StatelessWidget {
@@ -622,15 +690,15 @@ class _StatusLine extends StatelessWidget {
     final (text, color) = switch (state) {
       SenderState(isStreaming: true, clientPeer: final peer?) => (
         'Transmitindo para $peer',
-        Colors.greenAccent,
+        StatusColors.ok(context),
       ),
       SenderState(isStreaming: true) => (
         'Aguardando o computador conectar',
-        Colors.amberAccent,
+        StatusColors.warning(context),
       ),
       SenderState(phase: SenderPhase.ready, clientPeer: final peer?) => (
         'Conectado a $peer: o computador comanda a transmissão',
-        Colors.greenAccent,
+        StatusColors.ok(context),
       ),
       SenderState(phase: SenderPhase.ready) => (
         'Pronto: inicie aqui ou pelo computador',

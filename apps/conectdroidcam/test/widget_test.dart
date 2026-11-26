@@ -361,7 +361,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Conectado a 2201117SL'), findsNWidgets(2));
+      expect(find.text('Conectado a 2201117SL'), findsOneWidget);
       expect(find.text('Celular conectado'), findsOneWidget);
       expect(find.text('Endereço: 192.168.0.9:47821'), findsOneWidget);
       expect(find.text('Sistema: android'), findsOneWidget);
@@ -554,7 +554,9 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('Procurar de novo'), findsOneWidget);
-        expect(find.text('Esquecer celulares pareados (1)'), findsOneWidget);
+        expect(find.text('Celulares pareados'), findsOneWidget);
+        expect(find.byTooltip('Remover pareamento'), findsOneWidget);
+        expect(find.textContaining('Esquecer todos'), findsNothing);
         final chave = tester.widget<SwitchListTile>(
           find.byType(SwitchListTile),
         );
@@ -588,14 +590,20 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Esquecer celulares pareados (1)'));
+        await tester.tap(find.byTooltip('Remover pareamento'));
+        await tester.pumpAndSettle();
+        expect(find.text('Remover o pareamento com x?'), findsOneWidget);
+        await tester.tap(find.text('Cancelar'));
+        await tester.pumpAndSettle();
+        expect(store.settings.trustedPhones, {'x'});
+
+        await tester.tap(find.byTooltip('Remover pareamento'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Remover'));
         await tester.pumpAndSettle();
 
         expect(store.settings.trustedPhones, isEmpty);
-        expect(
-          find.textContaining('Esquecer celulares pareados'),
-          findsNothing,
-        );
+        expect(find.text('Celulares pareados'), findsNothing);
       },
       variant: linux,
     );
@@ -662,8 +670,16 @@ void main() {
 
     test('comando de setup da webcam virtual muda dentro do Flatpak', () {
       expect(
-        virtualWebcamSetupCommand(environment: const {}),
+        virtualWebcamSetupCommand(environment: const {}, exists: (_) => false),
         'sudo scripts/setup/linux-webcam-virtual.sh',
+      );
+      expect(
+        virtualWebcamSetupCommand(
+          environment: const {},
+          executable: '/opt/Con Dc/conectdroidcam',
+          exists: (p) => p == '/opt/Con Dc/data/linux-webcam-virtual.sh',
+        ),
+        "sudo bash '/opt/Con Dc/data/linux-webcam-virtual.sh'",
       );
       expect(
         virtualWebcamSetupCommand(

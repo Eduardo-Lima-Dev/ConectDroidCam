@@ -56,6 +56,11 @@ class FakeSenderPlatform implements SenderPlatform {
   @override
   Future<bool> hasCameraPermission() async => permissionGranted;
 
+  int settingsOpened = 0;
+
+  @override
+  Future<void> openAppSettings() async => settingsOpened++;
+
   @override
   Future<bool> requestCameraPermission() async {
     permissionRequests++;

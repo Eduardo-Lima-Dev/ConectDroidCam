@@ -53,6 +53,42 @@ void main() {
       expect(state().busy, isFalse);
     });
 
+    test('abre as configurações do app pelo botão', () async {
+      platform.grantOnRequest = false;
+      await controller().start();
+
+      await controller().openAppSettings();
+
+      expect(platform.settingsOpened, 1);
+    });
+
+    test(
+      'ao voltar das configurações com a permissão, abre a câmera',
+      () async {
+        platform.grantOnRequest = false;
+        await controller().start();
+        final pedidos = platform.permissionRequests;
+
+        await controller().onResumed();
+        expect(state().phase, SenderPhase.permissionDenied);
+        expect(platform.permissionRequests, pedidos);
+
+        platform.permissionGranted = true;
+        await controller().onResumed();
+        expect(state().phase, SenderPhase.ready);
+      },
+    );
+
+    test('voltar ao app sem estar sem permissão não reinicia nada', () async {
+      platform.permissionGranted = true;
+      await controller().start();
+      final aberturas = platform.previewStarts;
+
+      await controller().onResumed();
+
+      expect(platform.previewStarts, aberturas);
+    });
+
     test('falha ao abrir a câmera vira erro com a mensagem', () async {
       platform.permissionGranted = true;
       platform.startPreviewError = const SenderException('câmera em uso');
