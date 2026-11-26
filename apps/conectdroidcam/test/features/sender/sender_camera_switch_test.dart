@@ -26,6 +26,47 @@ void main() {
 
   SenderState state() => container.read(senderControllerProvider);
 
+  Future<void> pausa() => Future<void>.delayed(Duration.zero);
+
+  test(
+    'câmera perdida em segundo plano volta sozinha ao reabrir o app',
+    () async {
+      final controller = await ready();
+      final aberturas = platform.previewStarts;
+      platform.emit(const ErrorEvent('a câmera parou', recoverable: true));
+      await pausa();
+      expect(state().phase, SenderPhase.failed);
+
+      await controller.onResumed();
+
+      expect(state().phase, SenderPhase.ready);
+      expect(platform.previewStarts, aberturas + 1);
+    },
+  );
+
+  test('erro de câmera sem volta não reinicia ao reabrir o app', () async {
+    final controller = await ready();
+    platform.emit(const ErrorEvent('a câmera parou de responder'));
+    await pausa();
+
+    await controller.onResumed();
+
+    expect(state().phase, SenderPhase.failed);
+  });
+
+  test('o nome do computador pareado acompanha a conexão', () async {
+    await ready();
+    platform.emit(
+      const ClientEvent(connected: true, peer: '10.0.0.5:5000', name: 'meu-pc'),
+    );
+    await pausa();
+    expect(state().clientName, 'meu-pc');
+
+    platform.emit(const ClientEvent(connected: false));
+    await pausa();
+    expect(state().clientName, isNull);
+  });
+
   test('alterna entre traseira e frontal e reflete na prévia', () async {
     final controller = await ready();
     expect(state().preview!.isFront, isFalse);

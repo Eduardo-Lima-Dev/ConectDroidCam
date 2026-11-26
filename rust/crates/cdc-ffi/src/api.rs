@@ -104,6 +104,7 @@ pub enum ReceiverEventKind {
     Notice,
     Ended,
     Failed,
+    PhoneIdentity,
 }
 
 #[derive(Debug, Clone)]
@@ -353,6 +354,10 @@ pub fn connect_phone(
             return fail(e.to_string());
         }
     };
+    let _ = events.add(ReceiverEvent {
+        text: link.peer_fingerprint.clone(),
+        ..ReceiverEvent::new(ReceiverEventKind::PhoneIdentity)
+    });
     let stream = link.stream;
     let options = SessionOptions {
         sink: Sink {

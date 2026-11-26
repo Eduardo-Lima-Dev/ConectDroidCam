@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/receiver_platform.dart';
 import '../data/receiver_settings_store.dart';
 import '../data/rust_receiver_platform.dart';
+import '../domain/friendly_errors.dart';
 import '../domain/receiver_models.dart';
 
 enum ReceiverPhase {
@@ -50,6 +51,7 @@ class ReceiverState {
     this.reconnectAttempt = 0,
     this.notice,
     this.error,
+    this.errorDetails,
     this.discoveryError,
   });
 
@@ -93,6 +95,7 @@ class ReceiverState {
   final String? notice;
 
   final String? error;
+  final String? errorDetails;
   final String? discoveryError;
 
   bool get isBusy =>
@@ -131,6 +134,7 @@ class ReceiverState {
     int? reconnectAttempt,
     String? Function()? notice,
     String? Function()? error,
+    String? Function()? errorDetails,
     String? Function()? discoveryError,
   }) {
     return ReceiverState(
@@ -162,6 +166,11 @@ class ReceiverState {
       reconnectAttempt: reconnectAttempt ?? this.reconnectAttempt,
       notice: notice != null ? notice() : this.notice,
       error: error != null ? error() : this.error,
+      errorDetails: errorDetails != null
+          ? errorDetails()
+          : error != null
+          ? null
+          : this.errorDetails,
       discoveryError: discoveryError != null
           ? discoveryError()
           : this.discoveryError,
@@ -259,7 +268,9 @@ class ReceiverController extends Notifier<ReceiverState> {
       state = state.copyWith(
         phase: ReceiverPhase.unavailable,
         error: () =>
-            'Não consegui carregar o núcleo do app (libcdc_ffi.so): $e',
+            'Uma parte interna do app não carregou. Reinstale o ConectDroidCam; '
+            'se continuar, relate o problema com os detalhes abaixo.',
+        errorDetails: () => 'libcdc_ffi.so: $e',
       );
       return;
     }
@@ -618,6 +629,8 @@ class ReceiverController extends Notifier<ReceiverState> {
           pairing: () =>
               PairingPrompt(code: code, phoneFingerprint: phoneFingerprint),
         );
+      case PhoneIdentityUpdate(:final phoneFingerprint):
+        _recognizePhone(phoneFingerprint);
       case PairedUpdate(:final phoneFingerprint):
         _rememberPairedPhone(phoneFingerprint);
       case PairingDeniedUpdate(:final reason):
@@ -761,6 +774,34 @@ class ReceiverController extends Notifier<ReceiverState> {
     await _command(() => _platform.switchCamera(front: !caps.front));
   }
 
+  void _recognizePhone(String fingerprint) {
+    final key = _phoneKey(state.connectedTo ?? '');
+    if (state.fingerprints[key] == fingerprint) return;
+    final matches = [
+      for (final e in state.fingerprints.entries)
+        if (e.value == fingerprint && e.key != key) e.key,
+    ];
+    if (matches.isEmpty) return;
+    final name = matches.map((k) => state.phoneNames[k]).nonNulls.firstOrNull;
+    final trusted = {...state.trustedPhones};
+    final prints = {...state.fingerprints};
+    final names = {...state.phoneNames};
+    for (final k in matches.where((k) => k.startsWith('addr:'))) {
+      trusted.remove(k);
+      prints.remove(k);
+      names.remove(k);
+    }
+    trusted.add(key);
+    prints[key] = fingerprint;
+    if (name != null) names[key] = name;
+    state = state.copyWith(
+      trustedPhones: trusted,
+      fingerprints: prints,
+      phoneNames: names,
+    );
+    unawaited(_saveSettings());
+  }
+
   void _rememberPairedPhone(String fingerprint) {
     final key = _phoneKey(state.connectedTo ?? '');
     final name = state.phoneName;
@@ -795,6 +836,7 @@ class ReceiverController extends Notifier<ReceiverState> {
 
   void _finish({String? error}) {
     _connectedId = null;
+    final friendly = error == null ? null : friendlyError(error);
     try {
       ref.read(previewFrameProvider.notifier).update(null);
     } on Object catch (_) {}
@@ -809,7 +851,8 @@ class ReceiverController extends Notifier<ReceiverState> {
       stats: () => null,
       capabilities: () => null,
       pairing: () => null,
-      error: error != null ? () => error : null,
+      error: friendly != null ? () => friendly.message : null,
+      errorDetails: friendly != null ? () => friendly.details : null,
     );
   }
 }

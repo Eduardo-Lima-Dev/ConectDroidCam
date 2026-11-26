@@ -265,6 +265,7 @@ enum ReceiverEventKind {
   notice,
   ended,
   failed,
+  phoneIdentity,
 }
 
 class ShapeDevice {

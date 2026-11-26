@@ -55,7 +55,8 @@ void main() {
       await controller().start();
 
       expect(state().phase, ReceiverPhase.unavailable);
-      expect(state().error, contains('libcdc_ffi.so'));
+      expect(state().errorDetails, contains('libcdc_ffi.so'));
+      expect(state().error, isNot(contains('libcdc_ffi.so')));
 
       platform.initError = null;
       await controller().start();
@@ -306,6 +307,25 @@ void main() {
       }
       expect(platform.lastAddress, isNull);
     });
+
+    test(
+      'erro técnico vira frase clara, com o texto original nos detalhes',
+      () async {
+        await controller().connect('192.168.0.7:47821');
+        platform.send(
+          const FailedUpdate(
+            'não consegui conectar a 192.168.0.7:47821: Connection refused (os error 111)',
+          ),
+        );
+        await tick();
+
+        expect(state().error, contains('recusou a conexão'));
+        expect(state().errorDetails, contains('os error 111'));
+
+        controller().dismissError();
+        expect(state().errorDetails, isNull);
+      },
+    );
 
     test('endereço sem porta usa a porta padrão do celular', () async {
       await controller().connect('192.168.0.7');

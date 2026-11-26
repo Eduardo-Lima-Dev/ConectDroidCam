@@ -155,6 +155,8 @@ class RustReceiverPlatform implements ReceiverPlatform {
         return const EndedUpdate();
       case api.ReceiverEventKind.failed:
         return FailedUpdate(e.text);
+      case api.ReceiverEventKind.phoneIdentity:
+        return PhoneIdentityUpdate(e.text);
     }
   }
 
