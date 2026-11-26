@@ -268,3 +268,111 @@ class ErrorEvent extends SenderEvent {
   final String message;
   final bool recoverable;
 }
+
+class CameraControls {
+  const CameraControls({
+    this.zoomMin = 1,
+    this.zoomMax = 1,
+    this.zoom = 1,
+    this.focusSupported = false,
+    this.focusLocked = false,
+    this.exposureMin = 0,
+    this.exposureMax = 0,
+    this.exposureStep = 0,
+    this.exposure = 0,
+    this.aeLockSupported = false,
+    this.aeLock = false,
+    this.awbLockSupported = false,
+    this.awbLock = false,
+    this.torchSupported = false,
+    this.torch = false,
+  });
+
+  static const none = CameraControls();
+
+  factory CameraControls.fromMap(Map<Object?, Object?> raw) {
+    double d(String k, double fallback) =>
+        (raw[k] as num?)?.toDouble() ?? fallback;
+    int i(String k) => (raw[k] as num?)?.toInt() ?? 0;
+    bool b(String k) => raw[k] == true;
+    return CameraControls(
+      zoomMin: d('zoomMin', 1),
+      zoomMax: d('zoomMax', 1),
+      zoom: d('zoom', 1),
+      focusSupported: b('focusSupported'),
+      focusLocked: b('focusLocked'),
+      exposureMin: i('exposureMin'),
+      exposureMax: i('exposureMax'),
+      exposureStep: d('exposureStep', 0),
+      exposure: i('exposure'),
+      aeLockSupported: b('aeLockSupported'),
+      aeLock: b('aeLock'),
+      awbLockSupported: b('awbLockSupported'),
+      awbLock: b('awbLock'),
+      torchSupported: b('torchSupported'),
+      torch: b('torch'),
+    );
+  }
+
+  final double zoomMin;
+  final double zoomMax;
+  final double zoom;
+  final bool focusSupported;
+  final bool focusLocked;
+  final int exposureMin;
+  final int exposureMax;
+  final double exposureStep;
+  final int exposure;
+  final bool aeLockSupported;
+  final bool aeLock;
+  final bool awbLockSupported;
+  final bool awbLock;
+  final bool torchSupported;
+  final bool torch;
+
+  bool get canZoom => zoomMax - zoomMin > 0.01;
+
+  bool get canExpose => exposureMax > exposureMin && exposureStep > 0;
+
+  double get exposureEv => exposure * exposureStep;
+
+  List<double> get zoomPresets => [
+    if (zoomMin < 0.95) zoomMin,
+    for (final z in const [1.0, 2.0, 5.0])
+      if (z >= zoomMin - 0.01 && z <= zoomMax + 0.01) z,
+  ];
+
+  CameraControls copyWith({double? zoom, int? exposure}) => CameraControls(
+    zoomMin: zoomMin,
+    zoomMax: zoomMax,
+    zoom: zoom ?? this.zoom,
+    focusSupported: focusSupported,
+    focusLocked: focusLocked,
+    exposureMin: exposureMin,
+    exposureMax: exposureMax,
+    exposureStep: exposureStep,
+    exposure: exposure ?? this.exposure,
+    aeLockSupported: aeLockSupported,
+    aeLock: aeLock,
+    awbLockSupported: awbLockSupported,
+    awbLock: awbLock,
+    torchSupported: torchSupported,
+    torch: torch,
+  );
+}
+
+String formatDecimal(double value, {int digits = 1}) =>
+    value.toStringAsFixed(digits).replaceAll('.', ',');
+
+String zoomLabel(double zoom) {
+  final rounded = (zoom * 10).round() / 10;
+  final text = rounded == rounded.roundToDouble()
+      ? rounded.toStringAsFixed(0)
+      : formatDecimal(rounded);
+  return '$text×';
+}
+
+String exposureLabel(double ev) {
+  if (ev.abs() < 0.05) return '0 EV';
+  return '${ev > 0 ? '+' : '−'}${formatDecimal(ev.abs())} EV';
+}

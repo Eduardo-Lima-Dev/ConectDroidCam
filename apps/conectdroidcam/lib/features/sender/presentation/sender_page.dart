@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -225,9 +227,8 @@ class _ConsoleState extends ConsumerState<_Console> {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= constraints.maxHeight;
         final preview = _PreviewBox(
-          info: state.preview,
-          onTap: () => _setFullscreen(true),
-          showFullscreenHint: true,
+          state: state,
+          onFullscreen: () => _setFullscreen(true),
         );
         final panel = _ControlPanel(state: state);
         if (wide) {
@@ -266,8 +267,10 @@ class _ConsoleState extends ConsumerState<_Console> {
           fit: StackFit.expand,
           children: [
             _PreviewBox(
-              info: state.preview,
-              onTap: _menuOpen ? () => setState(() => _menuOpen = false) : null,
+              state: state,
+              onBackgroundTap: _menuOpen
+                  ? () => setState(() => _menuOpen = false)
+                  : null,
               rounded: false,
             ),
             Positioned(
@@ -363,30 +366,71 @@ class _MenuCard extends StatelessWidget {
   }
 }
 
-class _PreviewBox extends StatelessWidget {
+class _PreviewBox extends ConsumerStatefulWidget {
   const _PreviewBox({
-    required this.info,
-    this.onTap,
-    this.showFullscreenHint = false,
+    required this.state,
+    this.onFullscreen,
+    this.onBackgroundTap,
     this.rounded = true,
   });
 
-  final PreviewInfo? info;
-  final VoidCallback? onTap;
-  final bool showFullscreenHint;
+  final SenderState state;
+  final VoidCallback? onFullscreen;
+  final VoidCallback? onBackgroundTap;
   final bool rounded;
 
   @override
+  ConsumerState<_PreviewBox> createState() => _PreviewBoxState();
+}
+
+class _PreviewBoxState extends ConsumerState<_PreviewBox> {
+  final _area = GlobalKey();
+  Offset? _ring;
+  Timer? _ringTimer;
+  double _zoomAtStart = 1;
+  bool _pinching = false;
+
+  @override
+  void dispose() {
+    _ringTimer?.cancel();
+    super.dispose();
+  }
+
+  void _showRing(Offset global) {
+    final box = _area.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    setState(() => _ring = box.globalToLocal(global));
+    _ringTimer?.cancel();
+    _ringTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _ring = null);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final radius = rounded ? BorderRadius.circular(12) : BorderRadius.zero;
+    final info = widget.state.preview;
+    final controls = widget.state.controls;
+    final controller = ref.read(senderControllerProvider.notifier);
+    final radius = widget.rounded
+        ? BorderRadius.circular(12)
+        : BorderRadius.zero;
+    final focusEnabled =
+        widget.onBackgroundTap == null && controls.focusSupported;
     return Semantics(
-      button: onTap != null,
-      label: showFullscreenHint
-          ? 'Prévia da câmera. Toque para tela cheia.'
-          : null,
+      label: 'Prévia da câmera. Toque para focar; use dois dedos para zoom.',
       child: GestureDetector(
+        key: _area,
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
+        onTap: widget.onBackgroundTap,
+        onScaleStart: (_) => _zoomAtStart = controls.zoom,
+        onScaleUpdate: (details) {
+          if (details.pointerCount < 2 || !controls.canZoom) return;
+          if (!_pinching) setState(() => _pinching = true);
+          controller.setZoom(_zoomAtStart * details.scale);
+        },
+        onScaleEnd: (_) {
+          if (_pinching) setState(() => _pinching = false);
+        },
         child: DecoratedBox(
           decoration: BoxDecoration(color: Colors.black, borderRadius: radius),
           child: ClipRRect(
@@ -398,33 +442,70 @@ class _PreviewBox extends StatelessWidget {
                   child: info == null
                       ? const SizedBox.shrink()
                       : Transform.flip(
-                          flipX: info!.isFront,
+                          flipX: info.isFront,
                           child: RotatedBox(
-                            quarterTurns: info!.quarterTurns,
+                            quarterTurns: info.quarterTurns,
                             child: AspectRatio(
-                              aspectRatio: info!.textureAspectRatio,
-                              child: Texture(textureId: info!.textureId),
+                              aspectRatio: info.textureAspectRatio,
+                              child: LayoutBuilder(
+                                builder: (context, constraints) =>
+                                    GestureDetector(
+                                      onTapUp: focusEnabled
+                                          ? (details) {
+                                              final size = constraints.biggest;
+                                              controller.focusAt(
+                                                details.localPosition.dx /
+                                                    size.width,
+                                                details.localPosition.dy /
+                                                    size.height,
+                                              );
+                                              _showRing(details.globalPosition);
+                                            }
+                                          : null,
+                                      child: Texture(textureId: info.textureId),
+                                    ),
+                              ),
                             ),
                           ),
                         ),
                 ),
-                if (showFullscreenHint)
+                if (_ring case final ring?)
+                  Positioned(
+                    left: ring.dx - 28,
+                    top: ring.dy - 28,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (controls.canZoom && info != null)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 10,
+                    child: Center(
+                      child: _pinching
+                          ? _ZoomBadge(text: zoomLabel(controls.zoom))
+                          : _ZoomPresets(
+                              controls: controls,
+                              onSelected: controller.setZoom,
+                            ),
+                    ),
+                  ),
+                if (widget.onFullscreen != null)
                   Positioned(
                     right: 8,
                     bottom: 8,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Padding(
-                        padding: EdgeInsets.all(6),
-                        child: Icon(
-                          Icons.fullscreen,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                      ),
+                    child: _OverlayButton(
+                      icon: Icons.fullscreen,
+                      tooltip: 'Tela cheia',
+                      onPressed: widget.onFullscreen,
                     ),
                   ),
               ],
@@ -432,6 +513,239 @@ class _PreviewBox extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ZoomBadge extends StatelessWidget {
+  const _ZoomBadge({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomPresets extends StatelessWidget {
+  const _ZoomPresets({required this.controls, required this.onSelected});
+
+  final CameraControls controls;
+  final ValueChanged<double> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final presets = controls.zoomPresets;
+    if (presets.length < 2) return const SizedBox.shrink();
+    double distance(double z) => (z - controls.zoom).abs();
+    final nearest = presets.reduce(
+      (a, b) => distance(a) <= distance(b) ? a : b,
+    );
+    final exact = distance(nearest) < 0.05;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final z in presets)
+              _ZoomPresetButton(
+                label: z == nearest && !exact
+                    ? zoomLabel(controls.zoom)
+                    : zoomLabel(z),
+                selected: z == nearest,
+                onTap: () => onSelected(z),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomPresetButton extends StatelessWidget {
+  const _ZoomPresetButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Zoom $label',
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 36,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.amberAccent : Colors.white,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraAdjustments extends ConsumerWidget {
+  const _CameraAdjustments({required this.state});
+
+  final SenderState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final controller = ref.read(senderControllerProvider.notifier);
+    final c = state.controls;
+    final enabled = state.preview != null;
+    if (!c.canZoom &&
+        !c.canExpose &&
+        !c.focusSupported &&
+        !c.aeLockSupported &&
+        !c.awbLockSupported &&
+        !c.torchSupported) {
+      return const SizedBox.shrink();
+    }
+    final hint = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Ajustes da câmera', style: theme.textTheme.labelLarge),
+        if (c.focusSupported || c.canZoom)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              [
+                if (c.focusSupported) 'Toque na imagem para focar',
+                if (c.canZoom) 'use dois dedos para o zoom',
+              ].join('; '),
+              style: hint,
+            ),
+          ),
+        if (c.canZoom) ...[
+          const SizedBox(height: 8),
+          Text('Zoom: ${zoomLabel(c.zoom)}', style: theme.textTheme.bodyMedium),
+          Slider(
+            value: c.zoom.clamp(c.zoomMin, c.zoomMax),
+            min: c.zoomMin,
+            max: c.zoomMax,
+            label: zoomLabel(c.zoom),
+            onChanged: enabled ? controller.setZoom : null,
+          ),
+        ],
+        if (c.canExpose) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Exposição: ${exposureLabel(c.exposureEv)}',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+              if (c.exposure != 0)
+                TextButton(
+                  onPressed: enabled ? () => controller.setExposure(0) : null,
+                  child: const Text('Voltar ao normal'),
+                ),
+            ],
+          ),
+          Slider(
+            value: c.exposure.toDouble(),
+            min: c.exposureMin.toDouble(),
+            max: c.exposureMax.toDouble(),
+            divisions: c.exposureMax - c.exposureMin,
+            label: exposureLabel(c.exposureEv),
+            onChanged: enabled
+                ? (v) => controller.setExposure(v.round())
+                : null,
+          ),
+        ],
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            if (c.focusSupported)
+              ActionChip(
+                avatar: const Icon(
+                  Icons.center_focus_strong_outlined,
+                  size: 18,
+                ),
+                label: Text(
+                  c.focusLocked
+                      ? 'Voltar ao foco automático'
+                      : 'Foco automático',
+                ),
+                onPressed: enabled && c.focusLocked
+                    ? controller.focusAuto
+                    : null,
+              ),
+            if (c.aeLockSupported)
+              FilterChip(
+                avatar: const Icon(Icons.exposure_outlined, size: 18),
+                label: const Text('Travar exposição'),
+                selected: c.aeLock,
+                showCheckmark: false,
+                onSelected: enabled ? controller.setAeLock : null,
+              ),
+            if (c.awbLockSupported)
+              FilterChip(
+                avatar: const Icon(Icons.wb_auto_outlined, size: 18),
+                label: const Text('Travar cor'),
+                selected: c.awbLock,
+                showCheckmark: false,
+                onSelected: enabled ? controller.setAwbLock : null,
+              ),
+            if (c.torchSupported)
+              FilterChip(
+                avatar: Icon(
+                  c.torch ? Icons.flashlight_on : Icons.flashlight_off_outlined,
+                  size: 18,
+                ),
+                label: const Text('Lanterna'),
+                selected: c.torch,
+                showCheckmark: false,
+                onSelected: enabled ? controller.setTorch : null,
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -536,6 +850,8 @@ class _ControlPanel extends ConsumerWidget {
           enabled: !state.busy,
           onSelected: controller.selectFps,
         ),
+        const SizedBox(height: 16),
+        _CameraAdjustments(state: state),
         if (state.notice != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -907,6 +1223,14 @@ class _ConnectionInfo extends StatelessWidget {
                           '${state.bitrateKbps.round()} kb/s · '
                           '${state.dropped} descartados',
                 style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'A transmissão continua com a tela apagada ou em outro app. '
+                'Para parar, use o botão acima ou a notificação.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ],
