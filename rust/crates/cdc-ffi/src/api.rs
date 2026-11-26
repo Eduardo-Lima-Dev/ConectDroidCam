@@ -499,3 +499,61 @@ pub fn computer_name() -> String {
         .or_else(|| std::env::var("HOSTNAME").ok())
         .unwrap_or_else(|| "computador".into())
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayAction {
+    Ready,
+    Unavailable,
+    ShowWindow,
+    ToggleStream,
+    SwitchCamera,
+    Disconnect,
+    Quit,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrayEvent {
+    pub action: TrayAction,
+    pub text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrayStatus {
+    pub tooltip: String,
+    pub status_line: String,
+    pub connected: bool,
+    pub streaming: bool,
+    pub can_stream: bool,
+    pub can_switch: bool,
+}
+
+pub fn tray_start(
+    icon_rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+    sandboxed: bool,
+    events: StreamSink<TrayEvent>,
+) {
+    #[cfg(target_os = "linux")]
+    crate::tray::start(icon_rgba, width, height, sandboxed, events);
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (icon_rgba, width, height, sandboxed);
+        let _ = events.add(TrayEvent {
+            action: TrayAction::Unavailable,
+            text: "bandeja só existe no Linux".into(),
+        });
+    }
+}
+
+pub fn tray_update(status: TrayStatus) {
+    #[cfg(target_os = "linux")]
+    crate::tray::update(status);
+    #[cfg(not(target_os = "linux"))]
+    let _ = status;
+}
+
+pub fn tray_stop() {
+    #[cfg(target_os = "linux")]
+    crate::tray::stop();
+}

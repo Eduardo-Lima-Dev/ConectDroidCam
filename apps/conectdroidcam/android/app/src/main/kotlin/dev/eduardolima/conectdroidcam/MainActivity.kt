@@ -31,7 +31,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        bridge?.stopAll()
+        bridge?.release()
         updater?.dispose()
         super.onDestroy()
     }

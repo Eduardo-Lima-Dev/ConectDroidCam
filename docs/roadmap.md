@@ -110,7 +110,8 @@ Falta:
 - [x] **Trocar câmera frontal e traseira** pelo botão do celular (painel e tela cheia), também com a transmissão ligada: o codificador não para, o vídeo congela por cerca de 1 s e a rotação enviada ao computador é refeita. A troca só é aceita se a câmera nova oferecer a resolução e o FPS em uso; senão aparece um aviso e nada muda. A prévia da frontal sai espelhada, o vídeo enviado não. Testes do app passam e foi **validado no celular de verdade** (prévia, troca com a transmissão ligada e imagem no OBS). Falta o botão no computador, que depende do controle pelo PC (`camera.switch` já existe no protocolo).
 - [ ] **Microfone:** AAC sob demanda, ligando e desligando sem derrubar o vídeo. A permissão só é pedida quando o usuário liga; `audio.set` liga e desliga pelo computador. No PC vira um microfone virtual do PipeWire (`pipewire-rs`; o mecanismo foi validado no spike S3).
 - [x] Anunciar o serviço na rede (mDNS, `_conectdroidcam._tcp`) pelo `NsdManager`. **Falta validar no celular de verdade**; o lado do computador foi validado com um emissor simulado.
-- [ ] Transmissão em segundo plano no Android (serviço em primeiro plano com notificação; o ícone `ic_stat_cdc` já existe).
+- [x] **Transmissão em segundo plano no Android:** serviço em primeiro plano do tipo câmera enquanto transmite, com notificação (Parar, Trocar câmera), `WakeLock` parcial e trava de Wi-Fi de baixa latência. **Falta validar no celular de verdade** (tela apagada, outro app aberto, Android 14+).
+- [x] **Controles de câmera no celular:** zoom (pinça, botões 0,5×/1×/2× e controle deslizante; abaixo de 1× usa a grande-angular quando o aparelho expõe `CONTROL_ZOOM_RATIO`), toque para focar e medir a luz, compensação de exposição, travas de exposição e de cor e lanterna. **Falta** validar no aparelho, escolher a lente explicitamente e levar os controles ao protocolo para o PC comandar.
 - [ ] Superaquecimento, bateria e interrupções da câmera.
 - [ ] Permissão de rede local do Android 17 (`ACCESS_LOCAL_NETWORK`), quando o alvo do app chegar ao SDK 37.
 - [ ] Telas de pareamento, diagnóstico e configurações; estados `advertising`, `pairing` e `paired`.
@@ -132,14 +133,14 @@ O app do Linux já recebe o vídeo: acha o celular na rede, pareia com código d
 - [x] Celulares lembrados e **conexão automática** (não é segurança; veja o aviso na tela), formato da imagem **Automático/Horizontal/Vertical** e tamanho da saída **HD/Full HD/2K** (fixo, independente da resolução do celular), ambos salvos entre execuções, redescoberta a cada 8 s com a lista vazia e botão "Procurar de novo".
 - [x] **Controle pelo PC**: o celular abre o servidor e anuncia-se assim que a prévia abre; o app do computador conecta e escolhe resolução e FPS, inicia e para a transmissão e troca a câmera (mensagens `capabilities`, `stream.start`, `stream.stop`, `fps.set` e `camera.switch`; veja a seção 3.0 do protocolo). Trocar a resolução reinicia a transmissão sem mexer na webcam virtual. Testado com celular simulado (Rust e Dart) e com o celular de verdade pelo `cdc-testreceiver --do`; a tela do app do Linux foi validada pelo usuário. Resolução arbitrária em `profile.set` não foi necessária.
 - [x] Interface de pareamento: código nas duas telas com contagem regressiva, lista de celulares pareados com remoção individual e confirmação.
-- [ ] Ícone na bandeja (fechar a janela mantém a transmissão).
+- [x] **Ícone na bandeja** (StatusNotifierItem pelo `ksni`, no Rust): menu com o estado, mostrar a janela, iniciar e parar a transmissão, trocar a câmera, desconectar e sair; fechar a janela esconde o app. Sem bandeja (GNOME sem a extensão AppIndicator), fechar com o celular conectado pergunta se o app continua escondido; abrir o app de novo traz a janela (instância única). **Falta** validar num ambiente com bandeja (KDE, Ubuntu).
 - [ ] Receptor para macOS (hoje só Linux).
 
 ### Fase 5 — Saídas
 
 - [x] Linux, vídeo: tamanho fixo por sessão, com escala e letterbox, para a saída não mudar quando o celular gira (`cdc-core::filter`). Girar no meio da sessão reinicia o `ffmpeg`; **não foi medido** o que o OBS faz nesse instante com um celular de verdade.
 - [ ] Linux, áudio: nó `ConectDroidCam Microphone` no PipeWire.
-- [ ] Linux: assistente que detecta o módulo `v4l2loopback`, o Secure Boot e o OBS em Flatpak.
+- [x] Linux: **assistente da primeira execução** (e botão "Verificar o sistema"): ffmpeg, módulo `v4l2loopback`, Secure Boot, webcams do ConectDroidCam e bandeja, com o comando de correção pronto para copiar; dicas de OBS e firewall. **Não detecta** o OBS em Flatpak nem o firewall de verdade (de dentro do Flatpak não dá para ver); são só dicas.
 - [ ] macOS: plugin do OBS (memória compartilhada e socket Unix) e instalador.
 - [ ] macOS: extensão de câmera, atrás de um gate (só compila com conta paga).
 - [x] Imagem neutra (preta) na webcam virtual enquanto a conexão está caída e o PC tenta reconectar: o OBS não congela no último quadro.
@@ -230,7 +231,7 @@ Objetivo original: instalar o receptor do Linux por `flatpak install flathub <id
 2. ~~Controle pelo PC~~ (feito e validado).
 3. ~~Pareamento e TLS~~ (feito no Android e no Linux; falta validar no celular de verdade).
 4. **Microfone**: captura AAC no celular, ligado e desligado sem derrubar o vídeo, enviada ao microfone virtual do PipeWire.
-5. **USB do Android**, transmissão em segundo plano e superaquecimento. (Trocar câmera frontal e traseira já está feito no celular.)
+5. **USB do Android** e superaquecimento. (Trocar câmera, transmissão em segundo plano e controles de câmera já estão feitos no celular; falta validá-los no aparelho.)
 6. ~~Flathub~~ (cancelado). No lugar, **validar o repositório Flatpak próprio**: mDNS e escrita em `/dev/videoN` de dentro do sandbox, com o OBS lendo a webcam.
 7. Tudo que depende do Mac, em bloco, quando ele estiver preparado: iPhone, plugin do OBS e CI de macOS.
 8. **Medições** (latência de ponta a ponta e sessões de 60 minutos) e os pacotes nativos. (O APK assinado com chave de release já existe.)

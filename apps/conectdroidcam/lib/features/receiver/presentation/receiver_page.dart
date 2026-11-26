@@ -12,6 +12,8 @@ import '../domain/friendly_errors.dart';
 import '../domain/receiver_models.dart';
 import '../../update/application/desktop_update_controller.dart';
 import '../../update/presentation/desktop_update_banner.dart';
+import '../../desktop/application/desktop_shell.dart';
+import '../../setup/presentation/setup_wizard_page.dart';
 
 class ReceiverPage extends ConsumerStatefulWidget {
   const ReceiverPage({super.key});
@@ -24,15 +26,67 @@ class _ReceiverPageState extends ConsumerState<ReceiverPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(receiverControllerProvider.notifier).start();
-      ref.read(desktopUpdateProvider.notifier).check();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
+  }
+
+  Future<void> _boot() async {
+    ref.read(desktopUpdateProvider.notifier).check();
+    await ref.read(receiverControllerProvider.notifier).start();
+    if (!mounted) return;
+    if (ref.read(desktopShellEnabledProvider)) {
+      await ref.read(desktopShellProvider.notifier).start();
+    }
+    if (!mounted) return;
+    final state = ref.read(receiverControllerProvider);
+    if (state.phase != ReceiverPhase.unavailable && !state.setupDone) {
+      openSetupWizard(context);
+    }
+  }
+
+  Future<void> _askClose() async {
+    final shell = ref.read(desktopShellProvider.notifier);
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Fechar o ConectDroidCam?'),
+        content: const Text(
+          'O celular está conectado. Se o app fechar, a webcam virtual para de '
+          'receber imagem. Ele pode continuar rodando escondido: para voltar, '
+          'abra o ConectDroidCam de novo pelo menu de aplicativos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('sair'),
+            child: const Text('Desconectar e sair'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop('esconder'),
+            child: const Text('Continuar em segundo plano'),
+          ),
+        ],
+      ),
+    );
+    switch (choice) {
+      case 'esconder':
+        await shell.keepRunningHidden();
+      case 'sair':
+        await shell.quit();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(receiverControllerProvider);
+    ref.listen(desktopShellProvider.select((s) => s.closePrompt), (
+      previous,
+      next,
+    ) {
+      if (next > (previous ?? 0)) _askClose();
+    });
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -127,6 +181,11 @@ class _Content extends ConsumerWidget {
                   ),
                 ],
               ),
+            ),
+            IconButton(
+              tooltip: 'Verificar o sistema',
+              icon: const Icon(Icons.fact_check_outlined),
+              onPressed: () => openSetupWizard(context),
             ),
           ],
         ),
@@ -1110,4 +1169,10 @@ String _deviceLabel(ReceiverState state, String path) {
     if (d.path == path) return d.label;
   }
   return path;
+}
+
+void openSetupWizard(BuildContext context) {
+  Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const SetupWizardPage()));
 }

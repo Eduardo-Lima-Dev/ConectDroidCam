@@ -23,6 +23,16 @@ abstract interface class SenderPlatform {
   Future<List<PairedComputer>> listPaired();
 
   Future<void> unpair(String fingerprint);
+
+  Future<CameraControls> cameraControls();
+  Future<CameraControls> setZoom(double zoom);
+  Future<CameraControls> focusAt(double x, double y);
+  Future<CameraControls> focusAuto();
+  Future<CameraControls> setExposure(int value);
+  Future<CameraControls> setAeLock(bool value);
+  Future<CameraControls> setAwbLock(bool value);
+  Future<CameraControls> setTorch(bool value);
+
   Stream<SenderEvent> get events;
 }
 
@@ -133,6 +143,44 @@ class ChannelSenderPlatform implements SenderPlatform {
 
   @override
   Future<void> setFps(int fps) => _call<void>('setFps', {'fps': fps});
+
+  Future<CameraControls> _controls(
+    String method, [
+    Map<String, Object?>? arguments,
+  ]) async {
+    final raw = await _call<Map<Object?, Object?>?>(method, arguments);
+    return raw == null ? CameraControls.none : CameraControls.fromMap(raw);
+  }
+
+  @override
+  Future<CameraControls> cameraControls() => _controls('cameraControls');
+
+  @override
+  Future<CameraControls> setZoom(double zoom) =>
+      _controls('setZoom', {'zoom': zoom});
+
+  @override
+  Future<CameraControls> focusAt(double x, double y) =>
+      _controls('focusAt', {'x': x, 'y': y});
+
+  @override
+  Future<CameraControls> focusAuto() => _controls('focusAuto');
+
+  @override
+  Future<CameraControls> setExposure(int value) =>
+      _controls('setExposure', {'value': value});
+
+  @override
+  Future<CameraControls> setAeLock(bool value) =>
+      _controls('setAeLock', {'value': value});
+
+  @override
+  Future<CameraControls> setAwbLock(bool value) =>
+      _controls('setAwbLock', {'value': value});
+
+  @override
+  Future<CameraControls> setTorch(bool value) =>
+      _controls('setTorch', {'value': value});
 
   @override
   Future<void> stopStreaming() => _call<void>('stopStreaming');

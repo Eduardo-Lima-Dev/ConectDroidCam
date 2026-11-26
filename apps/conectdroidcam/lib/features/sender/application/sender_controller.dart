@@ -43,6 +43,7 @@ class SenderState {
     this.busy = false,
     this.pairing,
     this.pairedComputers = const [],
+    this.controls = CameraControls.none,
   });
 
   final SenderPhase phase;
@@ -78,6 +79,8 @@ class SenderState {
 
   final List<PairedComputer> pairedComputers;
 
+  final CameraControls controls;
+
   bool get isStreaming => phase == SenderPhase.streaming;
 
   LocalAddress? get lanAddress {
@@ -110,6 +113,7 @@ class SenderState {
     bool? busy,
     PairingRequestEvent? Function()? pairing,
     List<PairedComputer>? pairedComputers,
+    CameraControls? controls,
   }) {
     return SenderState(
       phase: phase ?? this.phase,
@@ -134,6 +138,7 @@ class SenderState {
       busy: busy ?? this.busy,
       pairing: pairing != null ? pairing() : this.pairing,
       pairedComputers: pairedComputers ?? this.pairedComputers,
+      controls: controls ?? this.controls,
     );
   }
 }
@@ -150,6 +155,10 @@ class SenderController extends Notifier<SenderState> {
 
   late SenderPlatform _platform;
   bool _restartOnReturn = false;
+  double? _pendingZoom;
+  bool _zoomBusy = false;
+  int? _pendingExposure;
+  bool _exposureBusy = false;
 
   @override
   SenderState build() {
@@ -201,9 +210,107 @@ class SenderController extends Notifier<SenderState> {
         selectedFps: capabilities.clampFps(selected, state.selectedFps),
         busy: false,
       );
+      await _loadControls();
     } on SenderException catch (e) {
       _fail(e.message);
     }
+  }
+
+  bool get _cameraOpen =>
+      state.preview != null &&
+      (state.phase == SenderPhase.ready || state.isStreaming);
+
+  Future<void> _loadControls() async {
+    try {
+      state = state.copyWith(controls: await _platform.cameraControls());
+    } on SenderException catch (_) {}
+  }
+
+  Future<bool> _adjust(Future<CameraControls> Function() call) async {
+    if (!_cameraOpen) return false;
+    try {
+      state = state.copyWith(controls: await call(), notice: () => null);
+      return true;
+    } on SenderException catch (e) {
+      state = state.copyWith(notice: () => e.message);
+      return false;
+    }
+  }
+
+  Future<void> setZoom(double zoom) async {
+    final c = state.controls;
+    if (!_cameraOpen || !c.canZoom) return;
+    final value = zoom.clamp(c.zoomMin, c.zoomMax).toDouble();
+    state = state.copyWith(controls: c.copyWith(zoom: value));
+    _pendingZoom = value;
+    if (_zoomBusy) return;
+    _zoomBusy = true;
+    try {
+      while (_pendingZoom != null) {
+        final next = _pendingZoom!;
+        _pendingZoom = null;
+        try {
+          final result = await _platform.setZoom(next);
+          if (_pendingZoom == null) state = state.copyWith(controls: result);
+        } on SenderException catch (e) {
+          state = state.copyWith(notice: () => e.message);
+        }
+      }
+    } finally {
+      _zoomBusy = false;
+    }
+  }
+
+  Future<void> setExposure(int value) async {
+    final c = state.controls;
+    if (!_cameraOpen || !c.canExpose) return;
+    final clamped = value.clamp(c.exposureMin, c.exposureMax);
+    state = state.copyWith(controls: c.copyWith(exposure: clamped));
+    _pendingExposure = clamped;
+    if (_exposureBusy) return;
+    _exposureBusy = true;
+    try {
+      while (_pendingExposure != null) {
+        final next = _pendingExposure!;
+        _pendingExposure = null;
+        try {
+          final result = await _platform.setExposure(next);
+          if (_pendingExposure == null) {
+            state = state.copyWith(controls: result);
+          }
+        } on SenderException catch (e) {
+          state = state.copyWith(notice: () => e.message);
+        }
+      }
+    } finally {
+      _exposureBusy = false;
+    }
+  }
+
+  Future<bool> focusAt(double x, double y) async {
+    if (!state.controls.focusSupported) return false;
+    return _adjust(
+      () => _platform.focusAt(x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)),
+    );
+  }
+
+  Future<void> focusAuto() async {
+    await _adjust(_platform.focusAuto);
+  }
+
+  Future<void> setAeLock(bool value) async {
+    if (!state.controls.aeLockSupported) return;
+    await _adjust(() => _platform.setAeLock(value));
+  }
+
+  Future<void> setAwbLock(bool value) async {
+    if (!state.controls.awbLockSupported) return;
+    await _adjust(() => _platform.setAwbLock(value));
+  }
+
+  Future<void> setTorch(bool value) async {
+    if (!state.controls.torchSupported) return;
+    await _adjust(() => _platform.setTorch(value));
   }
 
   Future<void> openAppSettings() async {
@@ -294,6 +401,7 @@ class SenderController extends Notifier<SenderState> {
       final preview = await _platform.switchCamera(front: !current.isFront);
       state = state.copyWith(preview: () => preview);
       await _refreshModes();
+      await _loadControls();
       state = state.copyWith(busy: false);
     } on SenderException catch (e) {
       state = state.copyWith(busy: false, notice: () => e.message);
@@ -392,7 +500,7 @@ class SenderController extends Notifier<SenderState> {
         }
       case CameraChangedEvent(:final preview):
         state = state.copyWith(preview: () => preview);
-        unawaited(_refreshModes());
+        unawaited(_refreshModes().then((_) => _loadControls()));
       case PairingRequestEvent():
         state = state.copyWith(pairing: () => event);
       case PairingEndedEvent(:final paired, :final computer, :final reason):
@@ -451,6 +559,7 @@ class SenderController extends Notifier<SenderState> {
       clientName: () => null,
       error: () => message,
       busy: false,
+      controls: CameraControls.none,
     );
   }
 }

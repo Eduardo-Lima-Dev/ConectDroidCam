@@ -141,6 +141,87 @@ class FakeSenderPlatform implements SenderPlatform {
     paired = paired.where((c) => c.fingerprint != fingerprint).toList();
   }
 
+  CameraControls controls = const CameraControls(
+    zoomMin: 0.5,
+    zoomMax: 8,
+    focusSupported: true,
+    exposureMin: -12,
+    exposureMax: 12,
+    exposureStep: 1 / 6,
+    aeLockSupported: true,
+    awbLockSupported: true,
+    torchSupported: true,
+  );
+  final List<String> controlCalls = [];
+  Object? controlsError;
+
+  Future<CameraControls> _apply(String call, CameraControls next) async {
+    final error = controlsError;
+    if (error != null) throw error;
+    controlCalls.add(call);
+    controls = next;
+    return next;
+  }
+
+  CameraControls _with({
+    double? zoom,
+    bool? focusLocked,
+    int? exposure,
+    bool? aeLock,
+    bool? awbLock,
+    bool? torch,
+  }) => CameraControls(
+    zoomMin: controls.zoomMin,
+    zoomMax: controls.zoomMax,
+    zoom: (zoom ?? controls.zoom).clamp(controls.zoomMin, controls.zoomMax),
+    focusSupported: controls.focusSupported,
+    focusLocked: focusLocked ?? controls.focusLocked,
+    exposureMin: controls.exposureMin,
+    exposureMax: controls.exposureMax,
+    exposureStep: controls.exposureStep,
+    exposure: (exposure ?? controls.exposure).clamp(
+      controls.exposureMin,
+      controls.exposureMax,
+    ),
+    aeLockSupported: controls.aeLockSupported,
+    aeLock: aeLock ?? controls.aeLock,
+    awbLockSupported: controls.awbLockSupported,
+    awbLock: awbLock ?? controls.awbLock,
+    torchSupported: controls.torchSupported,
+    torch: torch ?? controls.torch,
+  );
+
+  @override
+  Future<CameraControls> cameraControls() async => controls;
+
+  @override
+  Future<CameraControls> setZoom(double zoom) =>
+      _apply('zoom $zoom', _with(zoom: zoom));
+
+  @override
+  Future<CameraControls> focusAt(double x, double y) =>
+      _apply('focus $x $y', _with(focusLocked: true));
+
+  @override
+  Future<CameraControls> focusAuto() =>
+      _apply('focusAuto', _with(focusLocked: false));
+
+  @override
+  Future<CameraControls> setExposure(int value) =>
+      _apply('exposure $value', _with(exposure: value));
+
+  @override
+  Future<CameraControls> setAeLock(bool value) =>
+      _apply('aeLock $value', _with(aeLock: value));
+
+  @override
+  Future<CameraControls> setAwbLock(bool value) =>
+      _apply('awbLock $value', _with(awbLock: value));
+
+  @override
+  Future<CameraControls> setTorch(bool value) =>
+      _apply('torch $value', _with(torch: value));
+
   @override
   Stream<SenderEvent> get events => _events.stream;
 }

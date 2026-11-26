@@ -35,6 +35,7 @@ class ReceiverState {
     this.outputSize = OutputSize.fullHd,
     this.ffmpegOk = true,
     this.autoConnect = true,
+    this.setupDone = true,
     this.trustedPhones = const {},
     this.fingerprints = const {},
     this.phoneNames = const {},
@@ -67,6 +68,8 @@ class ReceiverState {
   final bool ffmpegOk;
 
   final bool autoConnect;
+
+  final bool setupDone;
 
   final Set<String> trustedPhones;
 
@@ -118,6 +121,7 @@ class ReceiverState {
     OutputSize? outputSize,
     bool? ffmpegOk,
     bool? autoConnect,
+    bool? setupDone,
     Set<String>? trustedPhones,
     Map<String, String>? fingerprints,
     Map<String, String>? phoneNames,
@@ -148,6 +152,7 @@ class ReceiverState {
       outputSize: outputSize ?? this.outputSize,
       ffmpegOk: ffmpegOk ?? this.ffmpegOk,
       autoConnect: autoConnect ?? this.autoConnect,
+      setupDone: setupDone ?? this.setupDone,
       trustedPhones: trustedPhones ?? this.trustedPhones,
       fingerprints: fingerprints ?? this.fingerprints,
       phoneNames: phoneNames ?? this.phoneNames,
@@ -280,6 +285,7 @@ class ReceiverController extends Notifier<ReceiverState> {
       phase: ReceiverPhase.idle,
       ffmpegOk: ffmpegOk,
       autoConnect: settings.autoConnect,
+      setupDone: settings.setupDone,
       trustedPhones: settings.trustedPhones,
       fingerprints: settings.fingerprints,
       phoneNames: settings.phoneNames,
@@ -427,6 +433,7 @@ class ReceiverController extends Notifier<ReceiverState> {
   Future<void> _saveSettings() => _store.save(
     ReceiverSettings(
       autoConnect: state.autoConnect,
+      setupDone: state.setupDone,
       trustedPhones: state.trustedPhones,
       fingerprints: state.fingerprints,
       phoneNames: state.phoneNames,
@@ -434,6 +441,12 @@ class ReceiverController extends Notifier<ReceiverState> {
       outputSize: state.outputSize,
     ),
   );
+
+  Future<void> markSetupDone() async {
+    if (state.setupDone) return;
+    state = state.copyWith(setupDone: true);
+    await _saveSettings();
+  }
 
   void dismissError() {
     if (state.error != null) state = state.copyWith(error: () => null);

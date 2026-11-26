@@ -34,6 +34,7 @@ Use a câmera do celular (Android ou iPhone) como webcam no computador (Linux ou
 ## Documentação
 
 - **Comece por aqui:** [Roadmap](docs/roadmap.md) (fases, o que já foi feito e o que falta) e [Guia de desenvolvimento](docs/desenvolvimento.md) (ambiente, como rodar tudo, convenções e armadilhas conhecidas)
+- [Melhorias: correções e funcionalidades novas](docs/melhorias.md) (o que foi sugerido, feito e o que falta)
 - [Arquitetura](docs/arquitetura.md)
 - [Protocolo v1](docs/protocol-v1.md)
 - [Usar a câmera do celular no OBS](docs/usar-com-obs.md)

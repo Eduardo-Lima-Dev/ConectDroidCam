@@ -33,6 +33,9 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
       final prints = json['fingerprints'];
       final names = json['phoneNames'];
       return ReceiverSettings(
+        setupDone: json['setupDone'] is bool
+            ? json['setupDone']! as bool
+            : false,
         autoConnect: json['autoConnect'] is bool
             ? json['autoConnect']! as bool
             : true,
@@ -69,6 +72,7 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
       await _file.parent.create(recursive: true);
       await _file.writeAsString(
         const JsonEncoder.withIndent('  ').convert({
+          'setupDone': settings.setupDone,
           'autoConnect': settings.autoConnect,
           'format': settings.format.name,
           'outputSize': settings.outputSize.name,

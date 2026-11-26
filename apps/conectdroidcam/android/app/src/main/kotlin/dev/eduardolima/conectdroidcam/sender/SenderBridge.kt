@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -23,7 +24,8 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     MethodChannel.MethodCallHandler,
     EventChannel.StreamHandler,
     StreamServer.Listener,
-    VideoEncoder.Listener {
+    VideoEncoder.Listener,
+    StreamingService.Actions {
     private val main = Handler(Looper.getMainLooper())
     private val textures = engine.renderer
     private var events: EventChannel.EventSink? = null
@@ -44,9 +46,17 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
 
     private var streamSize: Size? = null
 
+    private var clientName: String? = null
+
     init {
         MethodChannel(engine.dartExecutor.binaryMessenger, METHODS).setMethodCallHandler(this)
         EventChannel(engine.dartExecutor.binaryMessenger, EVENTS).setStreamHandler(this)
+        StreamingService.actions = this
+    }
+
+    fun release() {
+        stopAll()
+        if (StreamingService.actions === this) StreamingService.actions = null
     }
 
     private fun hasCameraPermission() =
@@ -106,10 +116,78 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                     stopStreaming()
                     result.success(null)
                 }
+                "cameraControls" -> result.success(camera?.controlsMap())
+                "setZoom" -> changeControls(result) { it.copy(zoom = (call.argument<Double>("zoom") ?: 1.0).toFloat()) }
+                "focusAt" -> changeControls(result) {
+                    it.copy(
+                        focusX = (call.argument<Double>("x") ?: 0.5).toFloat(),
+                        focusY = (call.argument<Double>("y") ?: 0.5).toFloat(),
+                    )
+                }
+                "focusAuto" -> changeControls(result) { it.copy(focusX = null, focusY = null) }
+                "setExposure" -> changeControls(result) { it.copy(exposure = call.argument<Int>("value") ?: 0) }
+                "setAeLock" -> changeControls(result) { it.copy(aeLock = call.argument<Boolean>("value") == true) }
+                "setAwbLock" -> changeControls(result) { it.copy(awbLock = call.argument<Boolean>("value") == true) }
+                "setTorch" -> changeControls(result) { it.copy(torch = call.argument<Boolean>("value") == true) }
                 else -> result.notImplemented()
             }
         } catch (e: Exception) {
             result.error("native_error", e.message ?: e.javaClass.simpleName, null)
+        }
+    }
+
+    private fun changeControls(
+        result: MethodChannel.Result,
+        change: (CameraController.Controls) -> CameraController.Controls,
+    ) {
+        val cam = camera ?: return result.error("camera", "Abra a prévia primeiro", null)
+        cam.updateControls(change) { outcome ->
+            main.post {
+                outcome.fold(
+                    onSuccess = { result.success(cam.controlsMap()) },
+                    onFailure = { result.error("camera", it.message ?: "A câmera não aceitou o ajuste", null) },
+                )
+            }
+        }
+    }
+
+    private fun updateNotification() {
+        if (encoder == null) return
+        val cam = camera ?: return
+        val size = streamSize ?: return
+        val title = clientName?.let { "Transmitindo para $it" } ?: "Transmitindo a câmera"
+        val lens = if (cam.isFrontFacing) "câmera frontal" else "câmera traseira"
+        StreamingService.show(
+            activity,
+            title,
+            "${size.width}×${size.height} a ${cam.targetFps} FPS · $lens",
+            cam.canSwitch(),
+        )
+    }
+
+    private fun askNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val prefs = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
+        if (prefs.getBoolean(ASKED_NOTIFICATIONS, false)) return
+        prefs.edit().putBoolean(ASKED_NOTIFICATIONS, true).apply()
+        activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
+    }
+
+    override fun stopFromNotification() {
+        main.post {
+            if (encoder != null) {
+                stopStreaming()
+                notifyRemoteState()
+            }
+        }
+    }
+
+    override fun switchFromNotification() {
+        main.post {
+            doSwitchCamera(null) { outcome ->
+                outcome.onSuccess { events?.success(mapOf("event" to "camera") + previewMap(it)) }
+            }
         }
     }
 
@@ -202,6 +280,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                 outcome.onSuccess {
                     server?.updateRotation(videoRotation(cam))
                     publishCapabilities()
+                    updateNotification()
                 }
                 done(outcome)
             }
@@ -268,6 +347,8 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
                         activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         startStats()
                         publishCapabilities()
+                        updateNotification()
+                        if (!remote) askNotificationsOnce()
                         done(
                             Result.success(
                                 mapOf(
@@ -305,7 +386,10 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         }
         cam.setFps(fps) { outcome ->
             main.post {
-                outcome.onSuccess { server?.updateFps(fps) }
+                outcome.onSuccess {
+                    server?.updateFps(fps)
+                    updateNotification()
+                }
                 done(outcome)
             }
         }
@@ -427,6 +511,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         startedByRemote = false
         server?.clearStream()
         publishCapabilities()
+        StreamingService.hide(activity)
         main.post { activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
@@ -477,12 +562,16 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
 
     override fun onClientConnected(peer: String, name: String?) {
         main.post {
+            clientName = name
+            updateNotification()
             events?.success(mapOf("event" to "client", "connected" to true, "peer" to peer, "name" to name))
         }
     }
 
     override fun onClientDisconnected() {
         main.post {
+            clientName = null
+            updateNotification()
             events?.success(mapOf("event" to "client", "connected" to false))
             if (startedByRemote && encoder != null) {
                 stopStreaming()
@@ -535,5 +624,8 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         const val PORT = 47821
         const val APP_VERSION = "0.1.0"
         private const val REQUEST_CAMERA = 4821
+        private const val REQUEST_NOTIFICATIONS = 4823
+        private const val PREFS = "conectdroidcam"
+        private const val ASKED_NOTIFICATIONS = "pediu_notificacao_transmissao"
     }
 }
