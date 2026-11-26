@@ -259,11 +259,14 @@ class ReceiverSettings {
     this.autoConnect = true,
     this.trustedPhones = const {},
     this.fingerprints = const {},
+    this.phoneNames = const {},
     this.format = ImageFormat.auto,
     this.outputSize = OutputSize.fullHd,
   });
 
   final Map<String, String> fingerprints;
+
+  final Map<String, String> phoneNames;
 
   final ImageFormat format;
 
@@ -277,10 +280,12 @@ class ReceiverSettings {
     bool? autoConnect,
     Set<String>? trustedPhones,
     Map<String, String>? fingerprints,
+    Map<String, String>? phoneNames,
     ImageFormat? format,
     OutputSize? outputSize,
   }) => ReceiverSettings(
     fingerprints: fingerprints ?? this.fingerprints,
+    phoneNames: phoneNames ?? this.phoneNames,
     autoConnect: autoConnect ?? this.autoConnect,
     trustedPhones: trustedPhones ?? this.trustedPhones,
     format: format ?? this.format,

@@ -36,6 +36,7 @@ class SenderState {
     this.dropped = 0,
     this.error,
     this.notice,
+    this.success,
     this.visibleAs,
     this.visibilityError,
     this.busy = false,
@@ -61,6 +62,8 @@ class SenderState {
   final String? error;
 
   final String? notice;
+
+  final String? success;
 
   final String? visibleAs;
 
@@ -97,6 +100,7 @@ class SenderState {
     int? dropped,
     String? Function()? error,
     String? Function()? notice,
+    String? Function()? success,
     String? Function()? visibleAs,
     String? Function()? visibilityError,
     bool? busy,
@@ -117,6 +121,7 @@ class SenderState {
       dropped: dropped ?? this.dropped,
       error: error != null ? error() : this.error,
       notice: notice != null ? notice() : this.notice,
+      success: success != null ? success() : this.success,
       visibleAs: visibleAs != null ? visibleAs() : this.visibleAs,
       visibilityError: visibilityError != null
           ? visibilityError()
@@ -194,6 +199,19 @@ class SenderController extends Notifier<SenderState> {
     }
   }
 
+  Future<void> openAppSettings() async {
+    try {
+      await _platform.openAppSettings();
+    } on SenderException catch (_) {}
+  }
+
+  Future<void> onResumed() async {
+    if (state.phase != SenderPhase.permissionDenied) return;
+    try {
+      if (await _platform.hasCameraPermission()) await start();
+    } on SenderException catch (_) {}
+  }
+
   Future<void> confirmPairing(bool accept) async {
     if (state.pairing == null) return;
     state = state.copyWith(pairing: () => null);
@@ -202,6 +220,10 @@ class SenderController extends Notifier<SenderState> {
     } on SenderException catch (e) {
       state = state.copyWith(notice: () => e.message);
     }
+  }
+
+  void clearSuccess() {
+    if (state.success != null) state = state.copyWith(success: () => null);
   }
 
   Future<void> unpair(String fingerprint) async {
@@ -359,13 +381,18 @@ class SenderController extends Notifier<SenderState> {
       case PairingRequestEvent():
         state = state.copyWith(pairing: () => event);
       case PairingEndedEvent(:final paired, :final computer, :final reason):
-        state = state.copyWith(
-          pairing: () => null,
-          notice: () => paired
-              ? '$computer foi pareado.'
-              : 'Pareamento com $computer não concluído'
+        state = paired
+            ? state.copyWith(
+                pairing: () => null,
+                notice: () => null,
+                success: () => '$computer foi pareado.',
+              )
+            : state.copyWith(
+                pairing: () => null,
+                notice: () =>
+                    'Pareamento com $computer não concluído'
                     '${reason != null ? ': $reason' : ''}.',
-        );
+              );
         if (paired) unawaited(_reloadPaired());
       case DiscoveryEvent(:final registered, :final name, :final error):
         state = state.copyWith(

@@ -2,9 +2,12 @@ package dev.eduardolima.conectdroidcam.sender
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Size
 import android.view.WindowManager
 import io.flutter.embedding.engine.FlutterEngine
@@ -57,6 +60,15 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
             when (call.method) {
                 "hasCameraPermission" -> result.success(hasCameraPermission())
                 "requestCameraPermission" -> requestCameraPermission(result)
+                "openAppSettings" -> {
+                    activity.startActivity(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", activity.packageName, null),
+                        ),
+                    )
+                    result.success(null)
+                }
                 "listModes" -> listModes(result)
                 "localAddresses" -> result.success(localAddresses())
                 "startPreview" -> startPreview(result)

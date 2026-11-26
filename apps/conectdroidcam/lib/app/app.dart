@@ -13,7 +13,7 @@ class ConectDroidCamApp extends StatelessWidget {
     return MaterialApp(
       title: 'ConectDroidCam',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark,
+      themeMode: ThemeMode.system,
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       home: const _RoleGate(),

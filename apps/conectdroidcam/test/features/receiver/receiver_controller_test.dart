@@ -292,8 +292,9 @@ void main() {
 
     test('endereço mal escrito é recusado antes de conectar', () async {
       for (final ruim in [
-        'abc',
-        '192.168.0.7',
+        'a b',
+        '999.1.1.1',
+        '[fe80::1',
         '192.168.0.7:',
         ':47821',
         '1.2.3.4:99999',
@@ -304,6 +305,22 @@ void main() {
         expect(state().error, contains('Endereço inválido'), reason: ruim);
       }
       expect(platform.lastAddress, isNull);
+    });
+
+    test('endereço sem porta usa a porta padrão do celular', () async {
+      await controller().connect('192.168.0.7');
+
+      expect(state().error, isNull);
+      expect(platform.lastAddress, '192.168.0.7:47821');
+    });
+
+    test('fechar o erro limpa a mensagem', () async {
+      await controller().connect('a b');
+      expect(state().error, isNotNull);
+
+      controller().dismissError();
+
+      expect(state().error, isNull);
     });
 
     test('endereço vazio não faz nada', () async {

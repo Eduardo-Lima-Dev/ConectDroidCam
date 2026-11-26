@@ -216,7 +216,8 @@ void pairingTests() {
     await tick();
     expect(state().pairing, isNull);
     expect(state().pairedComputers.single.name, 'meu-pc');
-    expect(state().notice, contains('meu-pc'));
+    expect(state().success, contains('meu-pc'));
+    expect(state().notice, isNull);
   });
 
   test(

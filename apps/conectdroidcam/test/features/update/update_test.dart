@@ -71,6 +71,7 @@ class FakePlatform implements UpdaterPlatform {
   final List<String> installs = [];
   int settingsOpened = 0;
   int backgroundEnabled = 0;
+  int notificationRequests = 0;
   final status = StreamController<(InstallStatus, String?)>.broadcast();
 
   @override
@@ -85,6 +86,8 @@ class FakePlatform implements UpdaterPlatform {
   Future<void> install(String path) async => installs.add(path);
   @override
   Future<void> enableBackgroundChecks() async => backgroundEnabled++;
+  @override
+  Future<void> requestNotificationPermission() async => notificationRequests++;
   @override
   Stream<(InstallStatus, String?)> get installStatus => status.stream;
 }
@@ -203,6 +206,15 @@ void main() {
       expect(platform.installs, ['${dir.path}/ConectDroidCam-7.apk']);
       expect(File('${dir.path}/ConectDroidCam-3.apk').existsSync(), isFalse);
       expect(state().phase, UpdatePhase.installing);
+    });
+
+    test('só pede a permissão de notificação ao atualizar', () async {
+      await controller().check();
+      await controller().enableBackgroundChecks();
+      expect(platform.notificationRequests, 0);
+
+      await controller().download();
+      expect(platform.notificationRequests, 1);
     });
 
     test(

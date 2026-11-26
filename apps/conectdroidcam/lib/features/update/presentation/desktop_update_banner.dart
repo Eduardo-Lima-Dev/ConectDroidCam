@@ -57,9 +57,17 @@ class DesktopUpdateBanner extends ConsumerWidget {
                 IconButton(
                   tooltip: 'Copiar o comando',
                   icon: const Icon(Icons.copy),
-                  onPressed: () => Clipboard.setData(
-                    const ClipboardData(text: desktopUpdateCommand),
-                  ),
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      const ClipboardData(text: desktopUpdateCommand),
+                    );
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        const SnackBar(content: Text('Comando copiado.')),
+                      );
+                  },
                 ),
               ],
             ),

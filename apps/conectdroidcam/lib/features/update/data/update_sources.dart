@@ -99,6 +99,7 @@ abstract interface class UpdaterPlatform {
   Future<void> install(String path);
 
   Future<void> enableBackgroundChecks();
+  Future<void> requestNotificationPermission();
   Stream<(InstallStatus, String?)> get installStatus;
 }
 
@@ -147,6 +148,10 @@ class ChannelUpdaterPlatform implements UpdaterPlatform {
   @override
   Future<void> enableBackgroundChecks() =>
       _channel.invokeMethod<void>('enableBackgroundChecks');
+
+  @override
+  Future<void> requestNotificationPermission() =>
+      _channel.invokeMethod<void>('requestNotifications');
 
   @override
   Stream<(InstallStatus, String?)> get installStatus => _status.stream;

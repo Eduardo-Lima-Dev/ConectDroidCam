@@ -31,6 +31,7 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
       if (json is! Map<String, Object?>) return const ReceiverSettings();
       final phones = json['trustedPhones'];
       final prints = json['fingerprints'];
+      final names = json['phoneNames'];
       return ReceiverSettings(
         autoConnect: json['autoConnect'] is bool
             ? json['autoConnect']! as bool
@@ -39,6 +40,12 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
         fingerprints: {
           if (prints is Map)
             for (final e in prints.entries)
+              if (e.key is String && e.value is String)
+                e.key as String: e.value as String,
+        },
+        phoneNames: {
+          if (names is Map)
+            for (final e in names.entries)
               if (e.key is String && e.value is String)
                 e.key as String: e.value as String,
         },
@@ -67,6 +74,7 @@ class FileReceiverSettingsStore implements ReceiverSettingsStore {
           'outputSize': settings.outputSize.name,
           'trustedPhones': settings.trustedPhones.toList()..sort(),
           'fingerprints': settings.fingerprints,
+          'phoneNames': settings.phoneNames,
         }),
       );
     } on Object {

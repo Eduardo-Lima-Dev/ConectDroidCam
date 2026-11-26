@@ -7,6 +7,7 @@ import '../domain/sender_models.dart';
 abstract interface class SenderPlatform {
   Future<bool> hasCameraPermission();
   Future<bool> requestCameraPermission();
+  Future<void> openAppSettings();
   Future<SenderCapabilities> listModes();
   Future<List<LocalAddress>> localAddresses();
   Future<PreviewInfo> startPreview();
@@ -57,6 +58,9 @@ class ChannelSenderPlatform implements SenderPlatform {
   @override
   Future<bool> requestCameraPermission() =>
       _call<bool>('requestCameraPermission');
+
+  @override
+  Future<void> openAppSettings() => _call<void>('openAppSettings');
 
   @override
   Future<SenderCapabilities> listModes() async {

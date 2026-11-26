@@ -123,6 +123,9 @@ class UpdateController extends Notifier<UpdateState> {
       progress: 0,
       message: () => null,
     );
+    unawaited(
+      _platform.requestNotificationPermission().catchError((Object _) {}),
+    );
     try {
       final dir = await _platform.downloadDir();
       for (final old in Directory(dir).listSync().whereType<File>()) {
