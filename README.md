@@ -6,13 +6,13 @@
 
 Use a câmera do celular (Android ou iPhone) como webcam no computador (Linux ou macOS), por Wi-Fi ou cabo USB, para o OBS Studio e outros programas.
 
-> **Estado:** em desenvolvimento. A câmera do celular Android já chega ao **OBS no Linux** por Wi-Fi, passando por uma webcam virtual, e o app do Linux acha o celular na rede e conecta. Ainda **não há pareamento nem criptografia** (qualquer aparelho da rede que ache o celular recebe o vídeo), nem áudio, USB, prévia no computador, iPhone ou macOS. Veja o [roadmap](docs/roadmap.md).
+> **Estado:** em desenvolvimento. A câmera do celular Android já chega ao **OBS no Linux** por Wi-Fi, passando por uma webcam virtual. O app do Linux acha o celular na rede, pareia com um código de 6 dígitos, recebe o vídeo por conexão criptografada (TLS), mostra a prévia e controla o celular (resolução, FPS, câmera, iniciar e parar). Ainda **não há** áudio, USB, iPhone nem macOS. Veja o [roadmap](docs/roadmap.md).
 
 ## Como vai funcionar
 
 1. Abra o ConectDroidCam no celular e no computador.
 2. Pareie os dois confirmando um código de 6 dígitos.
-3. Escolha a câmera, a resolução (HD, Full HD ou `2K (2560×1440)`) e se o microfone entra.
+3. Escolha a câmera, a resolução (HD, Full HD ou `2K (2560×1440)`) e os quadros por segundo, no celular ou no computador. O microfone entra numa versão seguinte.
 4. Use a câmera no OBS ou, no Linux, como webcam de qualquer programa.
 
 ## Plataformas

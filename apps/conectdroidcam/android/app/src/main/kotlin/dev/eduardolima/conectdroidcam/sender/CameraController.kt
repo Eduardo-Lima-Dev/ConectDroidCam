@@ -6,6 +6,10 @@ import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CameraDevice.StateCallback.ERROR_CAMERA_DISABLED
+import android.hardware.camera2.CameraDevice.StateCallback.ERROR_CAMERA_IN_USE
+import android.hardware.camera2.CameraDevice.StateCallback.ERROR_CAMERA_SERVICE
+import android.hardware.camera2.CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.media.MediaCodec
@@ -19,7 +23,7 @@ import io.flutter.view.TextureRegistry
 class CameraController(
     context: Context,
     private val textures: TextureRegistry,
-    private val onFatal: (String) -> Unit,
+    private val onFatal: (message: String, recoverable: Boolean) -> Unit,
 ) {
     data class Preview(
         val textureId: Long,
@@ -148,13 +152,21 @@ class CameraController(
                     override fun onDisconnected(camera: CameraDevice) {
                         camera.close()
                         if (device === camera) device = null
-                        onFatal("A câmera foi desconectada. Outro app pode estar usando, ou este foi para segundo plano.")
+                        onFatal(CAMERA_LOST, true)
                     }
 
                     override fun onError(camera: CameraDevice, error: Int) {
                         camera.close()
                         if (device === camera) device = null
-                        onFatal("Erro da câmera (código $error)")
+                        when (error) {
+                            ERROR_CAMERA_IN_USE, ERROR_MAX_CAMERAS_IN_USE ->
+                                onFatal("Outro app está usando a câmera. Feche-o e toque em Tentar de novo.", false)
+                            ERROR_CAMERA_DISABLED -> onFatal(CAMERA_LOST, true)
+                            ERROR_CAMERA_SERVICE ->
+                                onFatal("O serviço de câmera do Android falhou. Toque em Tentar de novo; se continuar, reinicie o celular.", false)
+                            else ->
+                                onFatal("A câmera parou de responder (código $error). Toque em Tentar de novo; se continuar, reinicie o celular.", false)
+                        }
                     }
                 },
                 cameraHandler,
@@ -242,7 +254,7 @@ class CameraController(
                     onFailure = { erro ->
                         bind(oldId)
                         openCurrent(worker) { volta ->
-                            volta.onFailure { onFatal("Não consegui trocar de câmera nem voltar à anterior.") }
+                            volta.onFailure { onFatal("Não consegui trocar de câmera nem voltar à anterior.", false) }
                             onResult(Result.failure(erro))
                         }
                     },
@@ -339,5 +351,11 @@ class CameraController(
         thread?.quitSafely()
         thread = null
         handler = null
+    }
+
+    companion object {
+        const val CAMERA_LOST =
+            "A câmera parou porque o app saiu da tela ou outro app passou a usá-la. " +
+                "Ela volta sozinha quando você abrir o ConectDroidCam de novo."
     }
 }

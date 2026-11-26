@@ -689,7 +689,7 @@ class _StatusLine extends StatelessWidget {
     final theme = Theme.of(context);
     final (text, color) = switch (state) {
       SenderState(isStreaming: true, clientPeer: final peer?) => (
-        'Transmitindo para $peer',
+        'Transmitindo para ${state.clientName ?? peer}',
         StatusColors.ok(context),
       ),
       SenderState(isStreaming: true) => (
@@ -697,7 +697,7 @@ class _StatusLine extends StatelessWidget {
         StatusColors.warning(context),
       ),
       SenderState(phase: SenderPhase.ready, clientPeer: final peer?) => (
-        'Conectado a $peer: o computador comanda a transmissão',
+        'Conectado a ${state.clientName ?? peer}: o computador comanda a transmissão',
         StatusColors.ok(context),
       ),
       SenderState(phase: SenderPhase.ready) => (
@@ -863,9 +863,9 @@ class _ConnectionInfo extends StatelessWidget {
             const SizedBox(height: 4),
             SelectableText(
               address == null
-                  ? 'Sem rede local'
+                  ? 'Sem Wi-Fi. Conecte o celular ao mesmo Wi-Fi do computador.'
                   : '${address.address}:${stream?.port ?? 47821}',
-              style: mono,
+              style: address == null ? theme.textTheme.bodyMedium : mono,
             ),
             const SizedBox(height: 6),
             Row(

@@ -31,6 +31,7 @@ class SenderState {
     this.addresses = const [],
     this.stream,
     this.clientPeer,
+    this.clientName,
     this.measuredFps = 0,
     this.bitrateKbps = 0,
     this.dropped = 0,
@@ -54,6 +55,8 @@ class SenderState {
   final StreamInfo? stream;
 
   final String? clientPeer;
+
+  final String? clientName;
 
   final double measuredFps;
   final double bitrateKbps;
@@ -95,6 +98,7 @@ class SenderState {
     List<LocalAddress>? addresses,
     StreamInfo? Function()? stream,
     String? Function()? clientPeer,
+    String? Function()? clientName,
     double? measuredFps,
     double? bitrateKbps,
     int? dropped,
@@ -116,6 +120,7 @@ class SenderState {
       addresses: addresses ?? this.addresses,
       stream: stream != null ? stream() : this.stream,
       clientPeer: clientPeer != null ? clientPeer() : this.clientPeer,
+      clientName: clientName != null ? clientName() : this.clientName,
       measuredFps: measuredFps ?? this.measuredFps,
       bitrateKbps: bitrateKbps ?? this.bitrateKbps,
       dropped: dropped ?? this.dropped,
@@ -144,6 +149,7 @@ class SenderController extends Notifier<SenderState> {
   StreamSubscription<SenderEvent>? _events;
 
   late SenderPlatform _platform;
+  bool _restartOnReturn = false;
 
   @override
   SenderState build() {
@@ -157,6 +163,7 @@ class SenderController extends Notifier<SenderState> {
 
   Future<void> start() async {
     if (state.busy || state.phase == SenderPhase.starting) return;
+    _restartOnReturn = false;
     state = state.copyWith(
       phase: SenderPhase.starting,
       busy: true,
@@ -206,6 +213,11 @@ class SenderController extends Notifier<SenderState> {
   }
 
   Future<void> onResumed() async {
+    if (state.phase == SenderPhase.failed && _restartOnReturn) {
+      _restartOnReturn = false;
+      await start();
+      return;
+    }
     if (state.phase != SenderPhase.permissionDenied) return;
     try {
       if (await _platform.hasCameraPermission()) await start();
@@ -338,8 +350,11 @@ class SenderController extends Notifier<SenderState> {
 
   void _onEvent(SenderEvent event) {
     switch (event) {
-      case ClientEvent(:final connected, :final peer):
-        state = state.copyWith(clientPeer: () => connected ? peer : null);
+      case ClientEvent(:final connected, :final peer, :final name):
+        state = state.copyWith(
+          clientPeer: () => connected ? peer : null,
+          clientName: () => connected ? name : null,
+        );
       case StatsEvent(:final fps, :final bitrateKbps, :final dropped):
         state = state.copyWith(
           measuredFps: fps,
@@ -399,8 +414,9 @@ class SenderController extends Notifier<SenderState> {
           visibleAs: () => registered ? name : null,
           visibilityError: () => registered ? null : error,
         );
-      case ErrorEvent(:final message):
+      case ErrorEvent(:final message, :final recoverable):
         _fail(message);
+        _restartOnReturn = recoverable;
     }
   }
 
@@ -432,6 +448,7 @@ class SenderController extends Notifier<SenderState> {
       preview: () => null,
       stream: () => null,
       clientPeer: () => null,
+      clientName: () => null,
       error: () => message,
       busy: false,
     );

@@ -173,6 +173,7 @@ class ChannelSenderPlatform implements SenderPlatform {
         return ClientEvent(
           connected: raw['connected']! as bool,
           peer: raw['peer'] as String?,
+          name: raw['name'] as String?,
         );
       case 'stats':
         return StatsEvent(
@@ -215,7 +216,10 @@ class ChannelSenderPlatform implements SenderPlatform {
           reason: raw['reason'] as String?,
         );
       case 'error':
-        return ErrorEvent(raw['message']! as String);
+        return ErrorEvent(
+          raw['message']! as String,
+          recoverable: raw['recoverable'] == true,
+        );
       default:
         return null;
     }

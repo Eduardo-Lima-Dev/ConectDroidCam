@@ -205,4 +205,57 @@ void main() {
       }
     });
   });
+
+  test('celular de IP novo é reconhecido pela impressão digital', () async {
+    await iniciar(
+      const ReceiverSettings(
+        trustedPhones: {'addr:10.0.0.9:47821'},
+        fingerprints: {'addr:10.0.0.9:47821': 'fp-celular'},
+        phoneNames: {'addr:10.0.0.9:47821': 'Pixel 8'},
+      ),
+    );
+    await controller().connect('10.0.0.23');
+    expect(platform.lastPinned, isNull);
+
+    platform.send(const PhoneIdentityUpdate('fp-celular'));
+    await tick();
+
+    expect(store.settings.trustedPhones, {'addr:10.0.0.23:47821'});
+    expect(store.settings.fingerprints, {'addr:10.0.0.23:47821': 'fp-celular'});
+    expect(store.settings.phoneNames, {'addr:10.0.0.23:47821': 'Pixel 8'});
+  });
+
+  test('impressão digital desconhecida não vira pareamento', () async {
+    await iniciar(
+      const ReceiverSettings(
+        trustedPhones: {'addr:10.0.0.9:47821'},
+        fingerprints: {'addr:10.0.0.9:47821': 'fp-celular'},
+      ),
+    );
+    await controller().connect('10.0.0.23');
+
+    platform.send(const PhoneIdentityUpdate('fp-outro'));
+    await tick();
+
+    expect(store.settings.trustedPhones, {'addr:10.0.0.9:47821'});
+  });
+
+  test(
+    'celular achado na rede mantém a chave dele e herda o pareamento',
+    () async {
+      await iniciar(
+        const ReceiverSettings(
+          trustedPhones: {'addr:10.0.0.9:47821'},
+          fingerprints: {'addr:10.0.0.9:47821': 'fp-celular'},
+        ),
+      );
+      await controller().connect(pixel.address, name: pixel.name, id: pixel.id);
+
+      platform.send(const PhoneIdentityUpdate('fp-celular'));
+      await tick();
+
+      expect(store.settings.trustedPhones, {pixel.id});
+      expect(store.settings.fingerprints[pixel.id], 'fp-celular');
+    },
+  );
 }

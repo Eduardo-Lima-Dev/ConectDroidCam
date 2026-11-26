@@ -21,7 +21,7 @@ class StreamServer(
     private val listener: Listener,
 ) {
     interface Listener {
-        fun onClientConnected(peer: String)
+        fun onClientConnected(peer: String, name: String?)
 
         fun onClientDisconnected()
 
@@ -247,7 +247,10 @@ class StreamServer(
             if (info.width > 0) enqueueControl(profileActualFrame())
             videoConfig?.let { enqueueControl(Protocol.Frame(Protocol.TYPE_VIDEO_CONFIG, 0, 0, it)) }
             announced = true
-            listener.onClientConnected(peer)
+            listener.onClientConnected(
+                peer,
+                security.store.list().firstOrNull { it.fingerprint == peerFingerprint }?.name,
+            )
             listener.onKeyframeNeeded()
         }
 

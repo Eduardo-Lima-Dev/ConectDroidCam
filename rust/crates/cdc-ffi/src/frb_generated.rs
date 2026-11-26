@@ -28,7 +28,7 @@
 // Section: imports
 
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
 
 // Section: boilerplate
@@ -770,6 +770,7 @@ impl SseDecode for crate::api::ReceiverEventKind {
             10 => crate::api::ReceiverEventKind::Notice,
             11 => crate::api::ReceiverEventKind::Ended,
             12 => crate::api::ReceiverEventKind::Failed,
+            13 => crate::api::ReceiverEventKind::PhoneIdentity,
             _ => unreachable!("Invalid variant for ReceiverEventKind: {}", inner),
         };
     }
@@ -987,6 +988,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::ReceiverEventKind {
             Self::Notice => 10.into_dart(),
             Self::Ended => 11.into_dart(),
             Self::Failed => 12.into_dart(),
+            Self::PhoneIdentity => 13.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -1230,6 +1232,7 @@ impl SseEncode for crate::api::ReceiverEventKind {
                 crate::api::ReceiverEventKind::Notice => 10,
                 crate::api::ReceiverEventKind::Ended => 11,
                 crate::api::ReceiverEventKind::Failed => 12,
+                crate::api::ReceiverEventKind::PhoneIdentity => 13,
                 _ => {
                     unimplemented!("");
                 }
@@ -1292,7 +1295,7 @@ mod io {
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
@@ -1316,7 +1319,7 @@ mod web {
     };
     use flutter_rust_bridge::for_generated::wasm_bindgen;
     use flutter_rust_bridge::for_generated::wasm_bindgen::prelude::*;
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate

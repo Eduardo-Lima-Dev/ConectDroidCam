@@ -195,10 +195,11 @@ sealed class SenderEvent {
 }
 
 class ClientEvent extends SenderEvent {
-  const ClientEvent({required this.connected, this.peer});
+  const ClientEvent({required this.connected, this.peer, this.name});
 
   final bool connected;
   final String? peer;
+  final String? name;
 }
 
 class StatsEvent extends SenderEvent {
@@ -262,7 +263,8 @@ class PairingEndedEvent extends SenderEvent {
 }
 
 class ErrorEvent extends SenderEvent {
-  const ErrorEvent(this.message);
+  const ErrorEvent(this.message, {this.recoverable = false});
 
   final String message;
+  final bool recoverable;
 }

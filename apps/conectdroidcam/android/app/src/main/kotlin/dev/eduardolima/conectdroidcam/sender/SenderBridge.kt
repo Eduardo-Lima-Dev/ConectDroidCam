@@ -53,7 +53,8 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         activity.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
     private fun ensureCamera(): CameraController =
-        camera ?: CameraController(activity, textures) { message -> fatal(message) }.also { camera = it }
+        camera ?: CameraController(activity, textures) { message, recoverable -> fatal(message, recoverable) }
+            .also { camera = it }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
@@ -214,7 +215,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         doStartStreaming(width, height, fps, remote = false) { outcome ->
             outcome.fold(
                 onSuccess = { result.success(it) },
-                onFailure = { result.error("start", it.message ?: "Não foi possível iniciar a transmissão", null) },
+                onFailure = { result.error("start", it.message ?: "Não consegui iniciar a transmissão", null) },
             )
         }
     }
@@ -253,7 +254,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
             newEncoder.stop()
             encoder = null
             currentServer.clearStream()
-            return fail(e.message ?: "Não foi possível iniciar a transmissão")
+            return fail(e.message ?: "Não consegui iniciar a transmissão")
         }
 
         streamMaxFps = maxFps
@@ -378,7 +379,7 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
     }
 
     private fun handleCommand(type: String, message: JSONObject) {
-        fun refuse(reason: String?) = server?.sendError(reason ?: "Não foi possível executar o comando")
+        fun refuse(reason: String?) = server?.sendError(reason ?: "O celular não conseguiu executar o comando")
         when (type) {
             "stream.start" -> {
                 val width = message.optInt("width", 0)
@@ -438,10 +439,10 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         camera = null
     }
 
-    private fun fatal(message: String) {
+    private fun fatal(message: String, recoverable: Boolean = false) {
         main.post {
             stopAll()
-            events?.success(mapOf("event" to "error", "message" to message))
+            events?.success(mapOf("event" to "error", "message" to message, "recoverable" to recoverable))
         }
     }
 
@@ -474,8 +475,10 @@ class SenderBridge(private val activity: Activity, engine: FlutterEngine) :
         main.postDelayed(task, 1000)
     }
 
-    override fun onClientConnected(peer: String) {
-        main.post { events?.success(mapOf("event" to "client", "connected" to true, "peer" to peer)) }
+    override fun onClientConnected(peer: String, name: String?) {
+        main.post {
+            events?.success(mapOf("event" to "client", "connected" to true, "peer" to peer, "name" to name))
+        }
     }
 
     override fun onClientDisconnected() {

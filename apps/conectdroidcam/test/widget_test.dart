@@ -364,7 +364,7 @@ void main() {
       expect(find.text('Conectado a 2201117SL'), findsOneWidget);
       expect(find.text('Celular conectado'), findsOneWidget);
       expect(find.text('Endereço: 192.168.0.9:47821'), findsOneWidget);
-      expect(find.text('Sistema: android'), findsOneWidget);
+      expect(find.text('Sistema: Android'), findsOneWidget);
       expect(find.text('Recebendo 1920×1080 a 30 FPS'), findsOneWidget);
       expect(find.text('Imagem girada 90° para ficar em pé'), findsOneWidget);
       expect(
@@ -524,7 +524,7 @@ void main() {
     }, variant: linux);
 
     testWidgets(
-      'mostra o selo de celular já usado e a opção de conexão automática',
+      'mostra o selo de celular pareado e a opção de conexão automática',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 1600);
         tester.view.devicePixelRatio = 1;
@@ -548,7 +548,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('192.168.0.7:47821 · já usado antes'), findsOneWidget);
+        expect(find.text('192.168.0.7:47821 · pareado'), findsOneWidget);
         expect(
           find.text('Conectar sozinho aos celulares pareados'),
           findsOneWidget,
@@ -689,6 +689,14 @@ void main() {
         ),
         'flatpak run --command=cat io.github.eduardo_lima_dev.ConectDroidCam '
         '/app/share/conectdroidcam/linux-webcam-virtual.sh | sudo bash',
+      );
+    });
+
+    test('aviso de ffmpeg ausente muda dentro do Flatpak', () {
+      expect(ffmpegMissingText(environment: const {}), contains('pacote'));
+      expect(
+        ffmpegMissingText(environment: const {'FLATPAK_ID': 'x'}),
+        contains('Reinstale'),
       );
     });
 

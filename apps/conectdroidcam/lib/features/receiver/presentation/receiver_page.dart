@@ -8,6 +8,7 @@ import '../../../shared/widgets/brand_logo.dart';
 import '../../../shared/widgets/pairing_countdown.dart';
 import '../../../shared/widgets/status_colors.dart';
 import '../application/receiver_controller.dart';
+import '../domain/friendly_errors.dart';
 import '../domain/receiver_models.dart';
 import '../../update/application/desktop_update_controller.dart';
 import '../../update/presentation/desktop_update_banner.dart';
@@ -75,6 +76,17 @@ class _Unavailable extends ConsumerWidget {
             state.error ?? 'Erro desconhecido.',
             textAlign: TextAlign.center,
           ),
+          if (state.errorDetails case final details?) ...[
+            const SizedBox(height: 8),
+            SelectableText(
+              details,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           FilledButton(
             onPressed: ref.read(receiverControllerProvider.notifier).start,
@@ -126,6 +138,7 @@ class _Content extends ConsumerWidget {
             color: theme.colorScheme.errorContainer,
             onColor: theme.colorScheme.onErrorContainer,
             onClose: controller.dismissError,
+            details: state.errorDetails,
           ),
         if (state.notice != null)
           _Banner(
@@ -138,9 +151,7 @@ class _Content extends ConsumerWidget {
         if (!state.ffmpegOk)
           _Banner(
             icon: Icons.warning_amber_outlined,
-            text:
-                'O ffmpeg não está instalado. Instale o pacote "ffmpeg" da sua '
-                'distribuição: ele decodifica o vídeo e escreve na webcam virtual.',
+            text: ffmpegMissingText(),
             color: theme.colorScheme.errorContainer,
             onColor: theme.colorScheme.onErrorContainer,
           ),
@@ -174,6 +185,7 @@ class _Banner extends StatelessWidget {
     required this.color,
     required this.onColor,
     this.onClose,
+    this.details,
   });
 
   final IconData icon;
@@ -181,6 +193,7 @@ class _Banner extends StatelessWidget {
   final Color color;
   final Color onColor;
   final VoidCallback? onClose;
+  final String? details;
 
   @override
   Widget build(BuildContext context) {
@@ -199,7 +212,13 @@ class _Banner extends StatelessWidget {
               Icon(icon, color: onColor, size: 20),
               const SizedBox(width: 10),
               Expanded(
-                child: SelectableText(text, style: TextStyle(color: onColor)),
+                child: details == null
+                    ? SelectableText(text, style: TextStyle(color: onColor))
+                    : _WithDetails(
+                        text: text,
+                        details: details!,
+                        color: onColor,
+                      ),
               ),
               if (onClose != null)
                 IconButton(
@@ -216,6 +235,53 @@ class _Banner extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WithDetails extends StatefulWidget {
+  const _WithDetails({
+    required this.text,
+    required this.details,
+    required this.color,
+  });
+
+  final String text;
+  final String details;
+  final Color color;
+
+  @override
+  State<_WithDetails> createState() => _WithDetailsState();
+}
+
+class _WithDetailsState extends State<_WithDetails> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SelectableText(widget.text, style: TextStyle(color: widget.color)),
+        TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: widget.color,
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+          ),
+          onPressed: () => setState(() => _open = !_open),
+          child: Text(_open ? 'Esconder detalhes' : 'Mostrar detalhes'),
+        ),
+        if (_open)
+          SelectableText(
+            widget.details,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              color: widget.color,
+            ),
+          ),
+      ],
     );
   }
 }
@@ -311,7 +377,7 @@ class _FinderState extends ConsumerState<_Finder> {
               title: Text(phone.name),
               subtitle: Text(
                 widget.state.trustedPhones.contains(phone.id)
-                    ? '${phone.address} · já usado antes'
+                    ? '${phone.address} · pareado'
                     : phone.address,
               ),
               trailing: FilledButton(
@@ -569,7 +635,8 @@ class _Connected extends ConsumerWidget {
     final stats = state.stats;
     final lines = <String>[
       if (state.connectedTo != null) 'Endereço: ${state.connectedTo}',
-      if (state.phonePlatform != null) 'Sistema: ${state.phonePlatform}',
+      if (state.phonePlatform != null)
+        'Sistema: ${platformLabel(state.phonePlatform!)}',
       if (incoming != null)
         'Recebendo ${incoming.width}×${incoming.height} a ${incoming.fps} FPS',
       if (incoming != null && incoming.rotation != 0)
@@ -815,9 +882,8 @@ class _OutputCard extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'A webcam virtual tem sempre este tamanho, seja qual for a resolução do '
-            'celular: dá para trocar a resolução no celular sem o OBS perder a imagem. '
-            'Uma resolução maior que esta é reduzida.',
+            'A webcam virtual mantém sempre este tamanho, qualquer que seja a '
+            'resolução do celular. Uma resolução maior é reduzida.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -849,17 +915,14 @@ class _OutputCard extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Automático usa vertical quando o celular está em pé e horizontal quando '
-            'está deitado, na hora de conectar. Se o celular girar depois, a imagem é '
-            'girada de volta e ganha barras pretas. Trocar o tamanho ou o formato '
-            'reconecta o celular.',
+            'Automático escolhe pela posição do celular na hora de conectar. '
+            'Trocar o tamanho ou o formato reconecta o celular.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 12),
-          _Banner(
-            icon: Icons.info_outline,
+          const SizedBox(height: 8),
+          _ObsHelp(
             text: state.hasDeviceFamily
                 ? 'No OBS, adicione a webcam do tamanho e formato que você usa, por exemplo '
                       '"ConectDroidCam FHD Vertical". Cada uma tem sempre o mesmo tamanho, então '
@@ -868,8 +931,39 @@ class _OutputCard extends ConsumerWidget {
                 : 'No OBS: depois de trocar o tamanho ou o formato, esconda e mostre a fonte de '
                       'vídeo, ou feche e abra o OBS. A webcam virtual mantém o tamanho com que o '
                       'OBS a abriu. Trocar só a resolução do celular não exige isso.',
-            color: theme.colorScheme.surfaceContainerHighest,
-            onColor: theme.colorScheme.onSurfaceVariant,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ObsHelp extends StatelessWidget {
+  const _ObsHelp({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        leading: const Icon(Icons.help_outline),
+        title: const Text('Como usar no OBS'),
+        children: [
+          Text(text, style: style),
+          const SizedBox(height: 8),
+          Text(
+            'No formato Automático, se o celular girar depois de conectar, a imagem '
+            'é girada de volta e ganha barras pretas, sem mudar o tamanho da webcam.',
+            style: style,
           ),
         ],
       ),
@@ -999,6 +1093,16 @@ String virtualWebcamSetupCommand({
     return "sudo bash '${script.replaceAll("'", r"'\''")}'";
   }
   return 'sudo scripts/setup/linux-webcam-virtual.sh';
+}
+
+String ffmpegMissingText({Map<String, String>? environment}) {
+  final env = environment ?? Platform.environment;
+  if ((env['FLATPAK_ID'] ?? '').isNotEmpty) {
+    return 'O ffmpeg que vem com o app não foi encontrado. Reinstale o '
+        'ConectDroidCam pelo Flatpak.';
+  }
+  return 'O ffmpeg não está instalado. Instale o pacote "ffmpeg" da sua '
+      'distribuição: ele decodifica o vídeo e escreve na webcam virtual.';
 }
 
 String _deviceLabel(ReceiverState state, String path) {

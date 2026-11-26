@@ -172,6 +172,12 @@ class PairingCodeUpdate extends ReceiverUpdate {
   final String phoneFingerprint;
 }
 
+class PhoneIdentityUpdate extends ReceiverUpdate {
+  const PhoneIdentityUpdate(this.phoneFingerprint);
+
+  final String phoneFingerprint;
+}
+
 class PairedUpdate extends ReceiverUpdate {
   const PairedUpdate(this.phoneFingerprint);
 
