@@ -30,6 +30,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   );
 
   @protected
+  RustStreamSink<TrayEvent> dco_decode_StreamSink_tray_event_Sse(dynamic raw);
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -37,6 +40,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   bool dco_decode_box_autoadd_bool(dynamic raw);
+
+  @protected
+  TrayStatus dco_decode_box_autoadd_tray_status(dynamic raw);
 
   @protected
   double dco_decode_f_64(dynamic raw);
@@ -49,6 +55,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
+
+  @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -84,6 +93,15 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   ShapeDevice dco_decode_shape_device(dynamic raw);
 
   @protected
+  TrayAction dco_decode_tray_action(dynamic raw);
+
+  @protected
+  TrayEvent dco_decode_tray_event(dynamic raw);
+
+  @protected
+  TrayStatus dco_decode_tray_status(dynamic raw);
+
+  @protected
   int dco_decode_u_16(dynamic raw);
 
   @protected
@@ -112,6 +130,11 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   );
 
   @protected
+  RustStreamSink<TrayEvent> sse_decode_StreamSink_tray_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
@@ -119,6 +142,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
+  TrayStatus sse_decode_box_autoadd_tray_status(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_64(SseDeserializer deserializer);
@@ -131,6 +157,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
+
+  @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -168,6 +197,15 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   ShapeDevice sse_decode_shape_device(SseDeserializer deserializer);
 
   @protected
+  TrayAction sse_decode_tray_action(SseDeserializer deserializer);
+
+  @protected
+  TrayEvent sse_decode_tray_event(SseDeserializer deserializer);
+
+  @protected
+  TrayStatus sse_decode_tray_status(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer);
 
   @protected
@@ -201,6 +239,12 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_tray_event_Sse(
+    RustStreamSink<TrayEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
@@ -208,6 +252,12 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_tray_status(
+    TrayStatus self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
@@ -226,6 +276,9 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
     Uint32List self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -268,6 +321,15 @@ abstract class CdcCoreApiImplPlatform extends BaseApiImpl<CdcCoreWire> {
 
   @protected
   void sse_encode_shape_device(ShapeDevice self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tray_action(TrayAction self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tray_event(TrayEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tray_status(TrayStatus self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_16(int self, SseSerializer serializer);

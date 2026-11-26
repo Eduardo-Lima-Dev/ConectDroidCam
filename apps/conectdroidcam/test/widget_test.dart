@@ -1,5 +1,7 @@
 import 'package:conectdroidcam/app/app.dart';
 import 'package:conectdroidcam/features/receiver/application/receiver_controller.dart';
+import 'package:conectdroidcam/features/setup/data/system_probe.dart';
+import 'package:conectdroidcam/features/setup/presentation/setup_wizard_page.dart';
 import 'package:conectdroidcam/features/receiver/domain/receiver_models.dart';
 import 'package:conectdroidcam/features/receiver/presentation/receiver_page.dart';
 import 'package:conectdroidcam/features/sender/application/sender_controller.dart';
@@ -261,6 +263,41 @@ void main() {
       await tester.pumpAndSettle();
       return platform;
     }
+
+    testWidgets('na primeira vez, abre o assistente e lembra ao concluir', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final store = FakeSettingsStore(const ReceiverSettings(setupDone: false));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            receiverPlatformProvider.overrideWithValue(FakeReceiverPlatform()),
+            receiverSettingsStoreProvider.overrideWithValue(store),
+            systemProbeProvider.overrideWithValue(
+              const SystemProbe(root: '/caminho-que-nao-existe'),
+            ),
+          ],
+          child: const ConectDroidCamApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Preparar este computador'), findsOneWidget);
+      expect(find.text('Webcams do ConectDroidCam'), findsOneWidget);
+
+      await tester.tap(find.text('Concluir'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Preparar este computador'), findsNothing);
+      expect(store.settings.setupDone, isTrue);
+
+      await tester.tap(find.byTooltip('Verificar o sistema'));
+      await tester.pumpAndSettle();
+      expect(find.text('Preparar este computador'), findsOneWidget);
+    }, variant: linux);
 
     testWidgets('mostra os blocos do celular e da webcam virtual', (
       tester,

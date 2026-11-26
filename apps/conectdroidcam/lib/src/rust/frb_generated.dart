@@ -64,7 +64,7 @@ class CdcCore extends BaseEntrypoint<CdcCoreApi, CdcCoreApiImpl, CdcCoreWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1202667186;
+  int get rustContentHash => 1450394323;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -117,6 +117,17 @@ abstract class CdcCoreApi extends BaseApi {
   Future<void> crateApiStopDiscovery();
 
   Future<void> crateApiStopIdleFeed();
+
+  Stream<TrayEvent> crateApiTrayStart({
+    required List<int> iconRgba,
+    required int width,
+    required int height,
+    required bool sandboxed,
+  });
+
+  Future<void> crateApiTrayStop();
+
+  Future<void> crateApiTrayUpdate({required TrayStatus status});
 }
 
 class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
@@ -546,6 +557,104 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   TaskConstMeta get kCrateApiStopIdleFeedConstMeta =>
       const TaskConstMeta(debugName: "stop_idle_feed", argNames: []);
 
+  @override
+  Stream<TrayEvent> crateApiTrayStart({
+    required List<int> iconRgba,
+    required int width,
+    required int height,
+    required bool sandboxed,
+  }) {
+    final events = RustStreamSink<TrayEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_list_prim_u_8_loose(iconRgba, serializer);
+            sse_encode_u_32(width, serializer);
+            sse_encode_u_32(height, serializer);
+            sse_encode_bool(sandboxed, serializer);
+            sse_encode_StreamSink_tray_event_Sse(events, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 14,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiTrayStartConstMeta,
+          argValues: [iconRgba, width, height, sandboxed, events],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return events.stream;
+  }
+
+  TaskConstMeta get kCrateApiTrayStartConstMeta => const TaskConstMeta(
+    debugName: "tray_start",
+    argNames: ["iconRgba", "width", "height", "sandboxed", "events"],
+  );
+
+  @override
+  Future<void> crateApiTrayStop() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiTrayStopConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiTrayStopConstMeta =>
+      const TaskConstMeta(debugName: "tray_stop", argNames: []);
+
+  @override
+  Future<void> crateApiTrayUpdate({required TrayStatus status}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_tray_status(status, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiTrayUpdateConstMeta,
+        argValues: [status],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiTrayUpdateConstMeta =>
+      const TaskConstMeta(debugName: "tray_update", argNames: ["status"]);
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
@@ -567,6 +676,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  RustStreamSink<TrayEvent> dco_decode_StreamSink_tray_event_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
@@ -582,6 +697,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   bool dco_decode_box_autoadd_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
+  }
+
+  @protected
+  TrayStatus dco_decode_box_autoadd_tray_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_tray_status(raw);
   }
 
   @protected
@@ -606,6 +727,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint32List;
+  }
+
+  @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
   }
 
   @protected
@@ -726,6 +853,40 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  TrayAction dco_decode_tray_action(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return TrayAction.values[raw as int];
+  }
+
+  @protected
+  TrayEvent dco_decode_tray_event(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return TrayEvent(
+      action: dco_decode_tray_action(arr[0]),
+      text: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  TrayStatus dco_decode_tray_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return TrayStatus(
+      tooltip: dco_decode_String(arr[0]),
+      statusLine: dco_decode_String(arr[1]),
+      connected: dco_decode_bool(arr[2]),
+      streaming: dco_decode_bool(arr[3]),
+      canStream: dco_decode_bool(arr[4]),
+      canSwitch: dco_decode_bool(arr[5]),
+    );
+  }
+
+  @protected
   int dco_decode_u_16(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -779,6 +940,14 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  RustStreamSink<TrayEvent> sse_decode_StreamSink_tray_event_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
@@ -795,6 +964,12 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_bool(deserializer));
+  }
+
+  @protected
+  TrayStatus sse_decode_box_autoadd_tray_status(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_tray_status(deserializer));
   }
 
   @protected
@@ -826,6 +1001,13 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint32List(len_);
+  }
+
+  @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint8List(len_);
   }
 
   @protected
@@ -987,6 +1169,40 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  TrayAction sse_decode_tray_action(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return TrayAction.values[inner];
+  }
+
+  @protected
+  TrayEvent sse_decode_tray_event(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_action = sse_decode_tray_action(deserializer);
+    var var_text = sse_decode_String(deserializer);
+    return TrayEvent(action: var_action, text: var_text);
+  }
+
+  @protected
+  TrayStatus sse_decode_tray_status(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_tooltip = sse_decode_String(deserializer);
+    var var_statusLine = sse_decode_String(deserializer);
+    var var_connected = sse_decode_bool(deserializer);
+    var var_streaming = sse_decode_bool(deserializer);
+    var var_canStream = sse_decode_bool(deserializer);
+    var var_canSwitch = sse_decode_bool(deserializer);
+    return TrayStatus(
+      tooltip: var_tooltip,
+      statusLine: var_statusLine,
+      connected: var_connected,
+      streaming: var_streaming,
+      canStream: var_canStream,
+      canSwitch: var_canSwitch,
+    );
+  }
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint16();
@@ -1059,6 +1275,23 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   }
 
   @protected
+  void sse_encode_StreamSink_tray_event_Sse(
+    RustStreamSink<TrayEvent> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_tray_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
@@ -1074,6 +1307,15 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
   void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_tray_status(
+    TrayStatus self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_tray_status(self, serializer);
   }
 
   @protected
@@ -1108,6 +1350,18 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint32List(self);
+  }
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(
+    List<int> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint8List(
+      self is Uint8List ? self : Uint8List.fromList(self),
+    );
   }
 
   @protected
@@ -1226,6 +1480,30 @@ class CdcCoreApiImpl extends CdcCoreApiImplPlatform implements CdcCoreApi {
     sse_encode_output_size(self.size, serializer);
     sse_encode_bool(self.vertical, serializer);
     sse_encode_String(self.path, serializer);
+  }
+
+  @protected
+  void sse_encode_tray_action(TrayAction self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_tray_event(TrayEvent self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_tray_action(self.action, serializer);
+    sse_encode_String(self.text, serializer);
+  }
+
+  @protected
+  void sse_encode_tray_status(TrayStatus self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.tooltip, serializer);
+    sse_encode_String(self.statusLine, serializer);
+    sse_encode_bool(self.connected, serializer);
+    sse_encode_bool(self.streaming, serializer);
+    sse_encode_bool(self.canStream, serializer);
+    sse_encode_bool(self.canSwitch, serializer);
   }
 
   @protected

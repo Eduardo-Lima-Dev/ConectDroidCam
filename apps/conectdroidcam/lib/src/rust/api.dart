@@ -7,7 +7,7 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `clear_session`, `command`, `failure`, `load_identity`, `new`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
 
 Stream<PhoneInfo> startDiscovery() =>
     CdcCore.instance.api.crateApiStartDiscovery();
@@ -73,6 +73,23 @@ Future<bool> ffmpegAvailable() =>
     CdcCore.instance.api.crateApiFfmpegAvailable();
 
 Future<String> computerName() => CdcCore.instance.api.crateApiComputerName();
+
+Stream<TrayEvent> trayStart({
+  required List<int> iconRgba,
+  required int width,
+  required int height,
+  required bool sandboxed,
+}) => CdcCore.instance.api.crateApiTrayStart(
+  iconRgba: iconRgba,
+  width: width,
+  height: height,
+  sandboxed: sandboxed,
+);
+
+Future<void> trayUpdate({required TrayStatus status}) =>
+    CdcCore.instance.api.crateApiTrayUpdate(status: status);
+
+Future<void> trayStop() => CdcCore.instance.api.crateApiTrayStop();
 
 enum OutputFormat { auto, horizontal, vertical }
 
@@ -290,4 +307,71 @@ class ShapeDevice {
           size == other.size &&
           vertical == other.vertical &&
           path == other.path;
+}
+
+enum TrayAction {
+  ready,
+  unavailable,
+  showWindow,
+  toggleStream,
+  switchCamera,
+  disconnect,
+  quit,
+}
+
+class TrayEvent {
+  final TrayAction action;
+  final String text;
+
+  const TrayEvent({required this.action, required this.text});
+
+  @override
+  int get hashCode => action.hashCode ^ text.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TrayEvent &&
+          runtimeType == other.runtimeType &&
+          action == other.action &&
+          text == other.text;
+}
+
+class TrayStatus {
+  final String tooltip;
+  final String statusLine;
+  final bool connected;
+  final bool streaming;
+  final bool canStream;
+  final bool canSwitch;
+
+  const TrayStatus({
+    required this.tooltip,
+    required this.statusLine,
+    required this.connected,
+    required this.streaming,
+    required this.canStream,
+    required this.canSwitch,
+  });
+
+  @override
+  int get hashCode =>
+      tooltip.hashCode ^
+      statusLine.hashCode ^
+      connected.hashCode ^
+      streaming.hashCode ^
+      canStream.hashCode ^
+      canSwitch.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TrayStatus &&
+          runtimeType == other.runtimeType &&
+          tooltip == other.tooltip &&
+          statusLine == other.statusLine &&
+          connected == other.connected &&
+          streaming == other.streaming &&
+          canStream == other.canStream &&
+          canSwitch == other.canSwitch;
 }

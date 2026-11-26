@@ -10,6 +10,9 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  GtkWindow* window;
+  FlMethodChannel* window_channel;
+  gboolean intercept_close;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -30,8 +33,56 @@ static void set_window_icon(GtkWindow* window) {
   gtk_window_set_icon_from_file(window, icon, nullptr);
 }
 
+static void present_window(MyApplication* self) {
+  if (self->window == nullptr) {
+    return;
+  }
+  gtk_widget_show(GTK_WIDGET(self->window));
+  gtk_window_present(self->window);
+}
+
+static gboolean delete_event_cb(GtkWidget* widget, GdkEvent* event,
+                                MyApplication* self) {
+  if (!self->intercept_close || self->window_channel == nullptr) {
+    return FALSE;
+  }
+  fl_method_channel_invoke_method(self->window_channel, "closeRequested",
+                                  nullptr, nullptr, nullptr, nullptr);
+  return TRUE;
+}
+
+static void window_method_cb(FlMethodChannel* channel, FlMethodCall* call,
+                             gpointer user_data) {
+  MyApplication* self = MY_APPLICATION(user_data);
+  const gchar* method = fl_method_call_get_name(call);
+  if (g_strcmp0(method, "setInterceptClose") == 0) {
+    FlValue* args = fl_method_call_get_args(call);
+    self->intercept_close =
+        args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_BOOL &&
+        fl_value_get_bool(args);
+  } else if (g_strcmp0(method, "show") == 0) {
+    present_window(self);
+  } else if (g_strcmp0(method, "hide") == 0) {
+    if (self->window != nullptr) {
+      gtk_widget_hide(GTK_WIDGET(self->window));
+    }
+  } else if (g_strcmp0(method, "quit") == 0) {
+    fl_method_call_respond_success(call, nullptr, nullptr);
+    g_application_quit(G_APPLICATION(self));
+    return;
+  } else {
+    fl_method_call_respond_not_implemented(call, nullptr);
+    return;
+  }
+  fl_method_call_respond_success(call, nullptr, nullptr);
+}
+
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+  if (self->window != nullptr) {
+    present_window(self);
+    return;
+  }
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -75,6 +126,17 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
+  self->window = window;
+  g_object_add_weak_pointer(G_OBJECT(window),
+                            reinterpret_cast<gpointer*>(&self->window));
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  self->window_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)), "cdc/window",
+      FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(self->window_channel,
+                                            window_method_cb, self, nullptr);
+  g_signal_connect(window, "delete-event", G_CALLBACK(delete_event_cb), self);
+
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
@@ -110,6 +172,7 @@ static void my_application_shutdown(GApplication* application) {
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+  g_clear_object(&self->window_channel);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 
@@ -129,5 +192,10 @@ MyApplication* my_application_new() {
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+#if GLIB_CHECK_VERSION(2, 74, 0)
+                                     G_APPLICATION_DEFAULT_FLAGS,
+#else
+                                     G_APPLICATION_FLAGS_NONE,
+#endif
+                                     nullptr));
 }
