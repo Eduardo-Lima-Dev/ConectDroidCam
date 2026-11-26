@@ -30,7 +30,9 @@ O script gera o bundle de release (`flutter build linux --release`), monta o Fla
 - O script auxiliar `linux-webcam-virtual.sh`, em `/app/share/conectdroidcam/linux-webcam-virtual.sh`.
 - Permissões: rede (descoberta e conexão), janela (Wayland e X11) e `--device=all`, para as webcams virtuais.
 
-## Publicação no Flathub
+## Publicação no Flathub (cancelada)
+
+O envio ao Flathub foi cancelado em 26/11/2026; o app é distribuído só pelo repositório próprio. Os arquivos abaixo ficam como referência.
 
 O manifesto raiz (`flatpak/io.github.eduardo_lima_dev.ConectDroidCam.yml`) usa o bundle local para builds rápidos de desenvolvimento (`instalar-local.sh` e `release.yml`).
 

@@ -2,7 +2,7 @@
 
 Plano de desenvolvimento do ConectDroidCam, com o estado de cada fase. É a fonte de verdade sobre **o que já foi feito e o que falta**; atualize-o junto com o código.
 
-**Última atualização:** 09/11/2026.
+**Última atualização:** 26/11/2026.
 
 ## Objetivo
 
@@ -29,7 +29,7 @@ Requisitos que valem para todas as fases:
 | Saída no Linux | `v4l2loopback` (vídeo) e PipeWire (microfone virtual) |
 | Saída no macOS | Plugin do OBS. A webcam do sistema exige conta Apple Developer paga, que **não há** por enquanto |
 | Apple | Há um Mac, sem conta paga: o iPhone só instala por perfil de desenvolvimento (expira em cerca de 7 dias) e não há TestFlight |
-| Distribuição | GitHub Releases no início; **Flatpak no Flathub** como instalador principal do Linux (veja "Distribuição no Flathub" abaixo). Sem outras lojas na primeira versão |
+| Distribuição | GitHub Releases e um **repositório Flatpak próprio** no GitHub Pages (veja [flatpak.md](flatpak.md)). O envio ao **Flathub foi cancelado** em 26/11/2026. Sem lojas na primeira versão |
 | Repositório | GitHub, privado |
 
 ### Desvios da especificação original
@@ -53,11 +53,11 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ não começou.
 | 1 | Spikes e gate G0 | 🟡 |
 | 2 | Fundação (protocolo, testes, CI) | ✅ |
 | 3 | Emissor móvel | 🟡 (Android em boa parte; iOS não começou) |
-| 4 | Núcleo e app do computador | 🟡 (primeira versão no Linux; sem pareamento, TLS nem prévia) |
-| 5 | Saídas (webcam virtual, microfone, OBS) | ⬜ |
+| 4 | Núcleo e app do computador | 🟡 (Linux com pareamento, TLS, prévia e controle do celular; falta bandeja, decodificação por hardware e macOS) |
+| 5 | Saídas (webcam virtual, microfone, OBS) | 🟡 (webcam virtual no Linux; falta microfone e macOS) |
 | 6 | USB | ⬜ |
-| 7 | Robustez e segurança | ⬜ |
-| 8 | Empacotamento e release | ⬜ |
+| 7 | Robustez e segurança | 🟡 (reconexão automática; faltam testes negativos e medições) |
+| 8 | Empacotamento e release | 🟡 (APK assinado, repositório Flatpak próprio e atualizações; falta pacotes nativos) |
 
 ### Fase 0 — Preparação do ambiente
 
@@ -119,19 +119,20 @@ Falta:
 
 ### Fase 4 — Núcleo e app do computador
 
-O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imagem e escreve na webcam virtual. Ainda não tem prévia, pareamento nem TLS, e depende do `ffmpeg` do sistema para decodificar. O macOS ainda não tem receptor.
+O app do Linux já recebe o vídeo: acha o celular na rede, pareia com código de 6 dígitos, conecta por TLS, mostra a prévia, controla o celular, gira a imagem e escreve na webcam virtual. Decodifica com o `ffmpeg` (o do sistema, ou o que vem no Flatpak). O macOS ainda não tem receptor.
 
 - [x] Ponte Flutter ↔ Rust (`flutter_rust_bridge`) e crate `cdc-core`, que o app e o `cdc-testreceiver` compartilham.
 - [x] Descoberta por mDNS com entrada manual de IP (módulo `discovery` do `cdc-core`).
-- [x] Transporte com TLS e impressão digital fixada (crate `cdc-security`). **Falta** reconexão com backoff: uma queda ainda encerra a sessão.
-- [x] Pareamento no computador: código de 6 dígitos, impressão digital do celular guardada em `receptor.json`, remoção do pareamento. **Falta** guardar a identidade e as impressões em armazenamento seguro do sistema (hoje arquivos só do dono) e o celular sem pareamento antigo precisa parear de novo.
+- [x] Transporte com TLS e impressão digital fixada (crate `cdc-security`). A reconexão automática está na Fase 7.
+- [x] Pareamento no computador: código de 6 dígitos, impressão digital do celular guardada em `receptor.json`, remoção do pareamento. **Falta** guardar a identidade e as impressões em armazenamento seguro do sistema (hoje arquivos só do dono) e o celular sem pareamento antigo precisa parear de novo. Um celular conectado por endereço digitado é reconhecido pela impressão digital, então continua pareado quando o IP muda.
 - [ ] `cdc-decode`: aceleração por hardware (VA-API no Linux, VideoToolbox no macOS), com decodificação por software de reserva, e relógio único de áudio e vídeo.
 - [x] Interface (v1): celulares encontrados, endereço manual, resolução real, rotação aplicada, estatísticas e escolha da webcam virtual e do formato.
 - [x] **Prévia** no app: o mesmo `ffmpeg` gera quadros JPEG de 480 px a 10 por segundo (sem textura do Flutter; o S8 deixou de ser necessário para a prévia). Validada com o celular de verdade em uma execução.
 - [x] **Seis webcams virtuais** (uma por tamanho e formato), escolhidas sozinhas pelo app, para trocar de resolução, tamanho, formato ou posição do celular sem o OBS reabrir a fonte. **Falta o usuário rodar o script com `sudo` e validar no OBS**; o núcleo e o app estão testados só com dispositivos simulados.
 - [x] Celulares lembrados e **conexão automática** (não é segurança; veja o aviso na tela), formato da imagem **Automático/Horizontal/Vertical** e tamanho da saída **HD/Full HD/2K** (fixo, independente da resolução do celular), ambos salvos entre execuções, redescoberta a cada 8 s com a lista vazia e botão "Procurar de novo".
 - [x] **Controle pelo PC**: o celular abre o servidor e anuncia-se assim que a prévia abre; o app do computador conecta e escolhe resolução e FPS, inicia e para a transmissão e troca a câmera (mensagens `capabilities`, `stream.start`, `stream.stop`, `fps.set` e `camera.switch`; veja a seção 3.0 do protocolo). Trocar a resolução reinicia a transmissão sem mexer na webcam virtual. Testado com celular simulado (Rust e Dart) e com o celular de verdade pelo `cdc-testreceiver --do`; a tela do app do Linux foi validada pelo usuário. Resolução arbitrária em `profile.set` não foi necessária.
-- [ ] Interface: pareamento e ícone na bandeja (fechar a janela mantém a transmissão).
+- [x] Interface de pareamento: código nas duas telas com contagem regressiva, lista de celulares pareados com remoção individual e confirmação.
+- [ ] Ícone na bandeja (fechar a janela mantém a transmissão).
 - [ ] Receptor para macOS (hoje só Linux).
 
 ### Fase 5 — Saídas
@@ -160,7 +161,7 @@ O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imag
 ### Fase 8 — Empacotamento e release
 
 - [x] Android: APK assinado com chave de release própria, fora do repositório (segredos do GitHub), com `versionCode` igual ao número do build. Veja [atualizacoes.md](atualizacoes.md).
-- [ ] **Linux: Flatpak para o Flathub** (instalador principal). Plano, pré-requisitos e riscos na seção "Distribuição no Flathub" abaixo.
+- **Cancelado (26/11/2026):** Flatpak no Flathub. O Linux é distribuído pelo repositório Flatpak próprio.
 - [x] Atualizações sem loja: repositório Flatpak próprio e assinado no GitHub Pages, atualizador e notificação no Android e aviso de versão nova no app do Linux. Releases `build-N` automáticas a cada push na `main`. Veja [atualizacoes.md](atualizacoes.md).
 - [ ] Linux, secundário: um `.tar.gz` do pacote de release (já compila e roda fora da pasta do projeto), PKGBUILD para Arch, `.deb` e AppImage (os ícones e o `.desktop` já estão em `packaging/linux/`).
 - [ ] macOS: `.dmg` com assinatura ad-hoc, com o plugin do OBS.
@@ -170,7 +171,9 @@ O app do Linux já recebe o vídeo: acha o celular na rede, conecta, gira a imag
 
 ## Distribuição no Flathub
 
-Objetivo: instalar o receptor do Linux por `flatpak install flathub <id>`. **Nada disto foi feito**; esta seção é o plano, com o que já foi verificado e o que ainda precisa ser pesquisado.
+> **Cancelado em 26/11/2026.** O app não será enviado ao Flathub. Esta seção fica como registro. Os pontos técnicos (módulo `v4l2loopback` no host, `--device=all`, `ffmpeg` embarcado, mDNS dentro do sandbox) continuam valendo para o repositório Flatpak próprio.
+
+Objetivo original: instalar o receptor do Linux por `flatpak install flathub <id>`. **Nada disto foi feito**; esta seção é o plano, com o que já foi verificado e o que ainda precisa ser pesquisado.
 
 ### Verificado nesta máquina
 - `flatpak` 1.18 está instalado.
@@ -190,7 +193,7 @@ Objetivo: instalar o receptor do Linux por `flatpak install flathub <id>`. **Nad
 ### O que o Flatpak precisa resolver
 1. **O módulo `v4l2loopback` é do kernel e não cabe num Flatpak.** O app depende das seis webcams virtuais, criadas com `sudo` no sistema. O Flatpak **não consegue** instalar o módulo nem rodar `sudo`. Caminho provável: o usuário instala o `v4l2loopback` pelo pacote da distribuição e roda o script de instalação no host (ou um pacote pequeno do host, como PKGBUILD ou `.deb`, que faça isso). O app precisa **detectar a falta e explicar** o que fazer, como já faz. Em máquinas com Secure Boot, o módulo ainda precisa ser assinado. **A aceitação disso pelo Flathub precisa ser confirmada na política atual.**
 2. **Escrever em `/dev/videoN`** exige a permissão `--device=all`, a mesma que o OBS em Flatpak já usa. O Flathub costuma pedir justificativa para ela.
-3. **`ffmpeg`.** O app chama o `ffmpeg` como programa e precisa do decodificador H.264. O runtime base não traz o programa, e os codecs com patentes ficam em extensão à parte. É preciso **embarcar um `ffmpeg` próprio** (construído só com o que o app usa) ou usar a extensão de codecs, e confirmar que o decodificador H.264 está incluído. **Ainda não pesquisei qual é o caminho aceito no Flathub.**
+3. **`ffmpeg`.** O app chama o `ffmpeg` como programa e precisa do decodificador H.264. O manifesto do repositório próprio **embarca um `ffmpeg` mínimo** (só o que o app usa), com as otimizações em assembly ligadas (o `nasm` vem no `org.gnome.Sdk` 51). **Ainda não pesquisei se esse caminho é aceito no Flathub.**
 4. **Compilar sem rede.** O Flathub compila sem acesso à internet: as dependências do Rust (`cargo`) precisam estar vendorizadas e as do Flutter (SDK e `pub`) precisam estar num cache offline. Há ferramentas da comunidade para isso (geradores de fontes para `cargo` e para Flutter); **precisam ser avaliadas**. Hoje o CMake chama o `cargo` durante o build do Flutter, o que terá de funcionar dentro do sandbox de build.
 5. **Rede.** `--share=network` para o TCP com o celular e para o mDNS. Falta **confirmar que o mDNS (multicast) funciona dentro do sandbox**.
 6. **Configurações.** O arquivo de configurações cai em `~/.var/app/<id>/config/` sozinho, pois usa `XDG_CONFIG_HOME`. Deve funcionar sem mudança; precisa de teste.
@@ -228,9 +231,9 @@ Objetivo: instalar o receptor do Linux por `flatpak install flathub <id>`. **Nad
 3. ~~Pareamento e TLS~~ (feito no Android e no Linux; falta validar no celular de verdade).
 4. **Microfone**: captura AAC no celular, ligado e desligado sem derrubar o vídeo, enviada ao microfone virtual do PipeWire.
 5. **USB do Android**, transmissão em segundo plano e superaquecimento. (Trocar câmera frontal e traseira já está feito no celular.)
-6. **Decisões para o Flathub** (licença, repositório público, identificador do app) e o **Flatpak** (seção "Distribuição no Flathub"). As decisões podem ser tomadas a qualquer momento e destravam o resto; o Flatpak em si é melhor depois de o pareamento e o TLS existirem, porque é o que se entrega ao público.
+6. ~~Flathub~~ (cancelado). No lugar, **validar o repositório Flatpak próprio**: mDNS e escrita em `/dev/videoN` de dentro do sandbox, com o OBS lendo a webcam.
 7. Tudo que depende do Mac, em bloco, quando ele estiver preparado: iPhone, plugin do OBS e CI de macOS.
-8. **Medições** (latência de ponta a ponta e sessões de 60 minutos), APK assinado com chave de release e os pacotes nativos.
+8. **Medições** (latência de ponta a ponta e sessões de 60 minutos) e os pacotes nativos. (O APK assinado com chave de release já existe.)
 
 ## Depende de pessoa ou de equipamento
 
@@ -240,7 +243,6 @@ Objetivo: instalar o receptor do Linux por `flatpak install flathub <id>`. **Nad
 | Mac com Xcode e um iPhone | S5, S6, S7, emissor iOS, CI de macOS |
 | Celular Android conectado | Qualquer teste no aparelho (veja o [guia-adb.md](guia-adb.md)) |
 | Conta Apple Developer paga (opcional) | Webcam do sistema no macOS e TestFlight |
-| Decisões sobre licença, repositório público e identificador do app | Qualquer passo do Flatpak no Flathub (veja "Distribuição no Flathub") |
 
 ## Estimativas originais
 

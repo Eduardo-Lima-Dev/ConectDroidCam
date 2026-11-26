@@ -19,7 +19,7 @@ modules:
       - >-
         ./configure --prefix=/app --disable-everything --disable-doc --disable-debug
         --disable-ffplay --disable-ffprobe --disable-network --disable-autodetect
-        --disable-x86asm --enable-ffmpeg --enable-avdevice --enable-avfilter
+        --enable-ffmpeg --enable-avdevice --enable-avfilter
         --enable-swscale --enable-outdev=v4l2 --enable-protocol=file,pipe
         --enable-demuxer=h264 --enable-parser=h264,mjpeg --enable-decoder=h264,mjpeg
         --enable-encoder=mjpeg,rawvideo --enable-muxer=image2pipe,null,rawvideo

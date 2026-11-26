@@ -18,8 +18,8 @@
     <p xml:lang="pt-BR">O ConectDroidCam transforma a câmera do celular Android em uma webcam do computador, pela rede Wi-Fi.</p>
     <p>Your phone and computer pair once by verifying a 6-digit code on both screens, establishing an encrypted TLS connection. From your computer you can choose resolution and frame rate, start or stop streaming, and switch between front and back cameras.</p>
     <p xml:lang="pt-BR">O celular e o computador se pareiam uma vez, conferindo um código de 6 dígitos nas duas telas, e a conexão é criptografada. Pelo computador você escolhe a resolução e os quadros por segundo, inicia e para a transmissão e troca entre a câmera frontal e a traseira.</p>
-    <p>The video appears as a virtual webcam ready for OBS Studio, web browsers, and video calling apps. Virtual webcam output requires the v4l2loopback kernel module to be installed on the host Linux system.</p>
-    <p xml:lang="pt-BR">A imagem aparece como uma webcam virtual, que o OBS, o navegador e programas de chamada de vídeo usam. A webcam virtual depende do módulo v4l2loopback do Linux, que precisa ser instalado no sistema.</p>
+    <p>The video appears as a virtual webcam, tested with OBS Studio. Virtual webcam output requires the v4l2loopback kernel module to be installed on the host Linux system.</p>
+    <p xml:lang="pt-BR">A imagem aparece como uma webcam virtual, testada no OBS Studio. A webcam virtual depende do módulo v4l2loopback do Linux, que precisa ser instalado no sistema.</p>
   </description>
   <screenshots>
     <screenshot type="default">
